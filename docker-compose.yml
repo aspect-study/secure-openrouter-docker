@@ -1,9 +1,11 @@
 # ============================================================
 # Secure OpenRouter — docker-compose.yml
 # Services:
-#   openrouter-proxy  — nginx reverse proxy      :8081
-#   openrouter-mysql  — dedicated MySQL 8.0      :3307
-#   openrouter-app    — Spring Boot backend      :8080  (Phase 2)
+#   openrouter-proxy  — nginx token proxy       :8081
+#   openrouter-mysql  — MySQL 8.0               :3309
+#   openrouter-app    — Spring Boot gateway     :8080
+#   admin-ui          — React SPA               :3000
+#
 # Usage:
 #   cp .env.example .env   # fill in your values
 #   docker compose up -d
@@ -18,8 +20,7 @@ services:
       dockerfile: Dockerfile
     container_name: openrouter-proxy
     restart: unless-stopped
-    env_file:
-      - .env
+    env_file: .env
     ports:
       - "127.0.0.1:8081:8080"
     read_only: true
@@ -55,18 +56,18 @@ services:
     image: mysql:8.0
     container_name: openrouter-mysql
     restart: unless-stopped
-    env_file:
-      - .env
+    env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE:      ${MYSQL_DATABASE}
       MYSQL_USER:          ${MYSQL_USER}
       MYSQL_PASSWORD:      ${MYSQL_PASSWORD}
     ports:
-      # Bind to localhost only — for local dev/debugging via a DB client
       - "127.0.0.1:3309:3306"
     volumes:
       - openrouter-mysql-data:/var/lib/mysql
+      # Seed script runs automatically on first container start
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
@@ -80,25 +81,55 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── Spring Boot App (Phase 2) ────────────────────────────────
-  # Uncomment when app/Dockerfile is ready
-  # openrouter-app:
-  #   build:
-  #     context: ./app
-  #     dockerfile: Dockerfile
-  #   container_name: openrouter-app
-  #   restart: unless-stopped
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "127.0.0.1:8080:8080"
-  #   depends_on:
-  #     openrouter-mysql:
-  #       condition: service_healthy
-  #     openrouter-proxy:
-  #       condition: service_healthy
-  #   networks:
-  #     - openrouter-net
+  # ── Spring Boot Application ──────────────────────────────────
+  openrouter-app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: openrouter-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override datasource to use Docker service name instead of localhost
+      SPRING_DATASOURCE_URL: jdbc:mysql://openrouter-mysql:3306/${MYSQL_DATABASE}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      # Override proxy URL to use Docker service name
+      OPENROUTER_PROXY_URL: http://openrouter-proxy:8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      openrouter-mysql:
+        condition: service_healthy
+      openrouter-proxy:
+        condition: service_healthy
+    networks:
+      - openrouter-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── React Admin UI ───────────────────────────────────────────
+  admin-ui:
+    build:
+      context: ./admin-ui
+      dockerfile: Dockerfile
+    container_name: admin-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      openrouter-app:
+        condition: service_healthy
+    networks:
+      - openrouter-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 networks:
   openrouter-net:
@@ -106,4 +137,3 @@ networks:
 
 volumes:
   openrouter-mysql-data:
-    # Named volume — data persists across container restarts

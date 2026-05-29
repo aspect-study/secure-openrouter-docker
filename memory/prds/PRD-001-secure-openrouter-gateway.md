@@ -2,7 +2,7 @@
 
 **Created:** 2026-05-29
 **Author:** aspect (oliver@lapapa88.com)
-**Status:** Phase 1 ✅ Phase 2 ✅ Phase 3 pending
+**Status:** Phase 1 ✅ Phase 2 ✅ Phase 3 ✅ Phase 4 ✅ Phase 5 pending
 
 ---
 
@@ -13,6 +13,7 @@ OpenRouter provides access to free LLM models via API, but using it directly fro
 - No audit trail of who called what model and when
 - No rate limiting — a single runaway script can exhaust the free tier
 - No security layer — any code with the token can call paid models
+- No UI for non-developer users to explore models
 
 ## Goal
 
@@ -22,6 +23,8 @@ Build a self-hosted, secure API gateway for OpenRouter that:
 3. Limits free model usage per user
 4. Logs every request for usage analysis
 5. Restricts access to free models only — no accidental paid model calls
+6. Provides an admin dashboard for monitoring and management
+7. Provides an AI Playground UI for interactive model exploration
 
 ---
 
@@ -30,8 +33,8 @@ Build a self-hosted, secure API gateway for OpenRouter that:
 ### Phase 1 — nginx Proxy Prototype ✅ Complete
 
 **What was built:**
-- nginx reverse proxy running in Docker (Alpine, non-root)
-- Injects OpenRouter API token via `envsubst` at container startup
+- nginx reverse proxy in Docker (Alpine, non-root)
+- Token injection via `envsubst` at container startup
 - TLS verification to `openrouter.ai`
 - Localhost-only port binding (`127.0.0.1:8081`)
 - Read-only container filesystem, dropped Linux capabilities
@@ -49,79 +52,113 @@ Build a self-hosted, secure API gateway for OpenRouter that:
 ### Phase 2 — Spring Boot Gateway ✅ Complete
 
 **What was built:**
-- Spring Boot 3.5 app (Java 25 toolchain, Gradle Groovy DSL)
+- Spring Boot 3.5, Java 25 toolchain, Gradle Groovy DSL
 - JWT authentication (register, login, Bearer token on all chat endpoints)
 - Per-user rate limiting via Bucket4j (10 req/min, configurable)
-- Free model whitelist enforced server-side
+- Free model whitelist enforced server-side (24 verified models)
 - Every request logged to MySQL (`chat_logs` table)
-- Virtual threads enabled for efficient blocking I/O
+- Virtual threads enabled (`spring.threads.virtual.enabled=true`)
 - Global exception handler with clean JSON error responses
-- Dedicated MySQL 8.0 container (`openrouter_gateway` database)
+- Dedicated MySQL 8.0 container (`openrouter_gateway` database, port 3309)
 
 **Acceptance criteria met:**
 - `POST /api/auth/register` creates user with BCrypt-hashed password
 - `POST /api/auth/login` returns signed JWT
-- `POST /api/chat/completions` with valid JWT proxies to OpenRouter via nginx
-- Rate limit returns 429 with `Retry-After` header when exceeded
+- `POST /api/chat/completions` proxies to OpenRouter via nginx
+- Rate limit returns 429 with `Retry-After` header
 - `chat_logs` table populated after each request
 - Disallowed model returns 400 with descriptive error
 
 ---
 
-### Phase 3 — Full Dockerization 🔲 Pending
+### Phase 3 — Full Dockerization ✅ Complete
 
-**Goal:** Run all three services (nginx, Spring Boot, MySQL) via `docker compose up -d`.
+**What was built:**
+- `app/Dockerfile` — multi-stage build (Java 21 Gradle → Java 25 JRE Alpine runtime)
+- Non-root `appuser` in container
+- Health check on `/actuator/health`
+- Updated `docker-compose.yml` — all 4 services with `depends_on` health conditions
+- `OPENROUTER_PROXY_URL` switches from `localhost:8081` → `openrouter-proxy:8080` via environment override
+- `db/seed.sql` mounts as Docker init script for first-run setup
 
-**Requirements:**
-- Spring Boot `Dockerfile` using multi-stage build (Gradle build → JRE runtime)
-- Base image: `eclipse-temurin:25-jre-alpine`
-- Non-root user in container
-- `depends_on` with `service_healthy` for MySQL and nginx
-- `OPENROUTER_PROXY_URL` switches from `localhost:8081` to `openrouter-proxy:8080` (internal network)
-- All secrets via `env_file: .env`
-- Single `docker compose up -d` starts the entire stack
-
-**Out of scope for Phase 3:**
-- External TLS (handle in Phase 4 with Caddy or nginx TLS terminator)
-- Kubernetes deployment
+**Acceptance criteria met:**
+- `docker compose up -d` brings entire stack up
+- All services show (healthy) after startup
+- Spring Boot correctly connects to MySQL and nginx via Docker network names
 
 ---
 
-### Phase 4 — Admin UI 🔲 Future
+### Phase 4 — Admin UI + AI Playground ✅ Complete
 
-**Goal:** A simple web dashboard for monitoring usage.
+**What was built:**
 
-**Requirements:**
-- View per-user token consumption and request counts
-- List recent chat logs with model, latency, and response preview
-- Manage allowed models whitelist without code changes
-- Technology: Thymeleaf + Spring MVC (keep stack consistent) or React SPA
+**AI Playground (`/playground`):**
+- Chat interface with conversation persistence (MySQL)
+- Model selector via `Ctrl+K` command palette — keyboard navigable
+- Per-model descriptions: best use, limitations, context window, rate limit
+- Real token usage display (from OpenRouter response, not estimated)
+- Auto-titling of conversations from first message
+- Typing indicator with wave animation
+- Responsive layout (mobile drawer, desktop sidebar)
+- Dark/light theme toggle (persistent via localStorage)
+
+**Admin Dashboard (`/admin/*`):**
+- Dashboard — stat cards + 7-day requests chart
+- Chat Logs — paginated table with filters + CSV export
+- Model Manager — enable/disable models per toggle (persisted to `model_config`)
+- User Manager — role changes, activate/deactivate accounts
+- All routes protected by `ROLE_ADMIN`
+
+**Tech stack:**
+- Vite + React + TypeScript
+- TailwindCSS v3 + shadcn/ui (radix-nova style)
+- Lucide React icons
+- Axios with JWT interceptor + 401 auto-logout
+- React Router v6
+
+**New backend:**
+- `AdminController.java` — all admin endpoints
+- `ModelConfig.java` + `ModelConfigRepository.java`
+- `Conversation.java` + `ConversationMessage.java` + `ConversationController.java`
+- Updated `User.java` (added `active` field)
+- Updated `JwtAuthFilter` (rejects inactive users)
+- Updated `OpenRouterClient` (checks `model_config.enabled`)
+- CORS configured for `localhost:3000`
+
+**Acceptance criteria met:**
+- Login routes correctly to Playground (USER) or Admin Dashboard (ADMIN)
+- Chat conversations persist across page refresh
+- Model toggle in admin immediately blocks/allows model in chat
+- Deactivated user's JWT is rejected on next request
+- All admin tables load real data from DB
 
 ---
 
-### Phase 5 — CI/CD Pipeline 🔲 Future
+### Phase 5 — CI/CD Pipeline 🔲 Pending
 
 **Goal:** Automated build, test, and Docker image push on every commit.
 
 **Requirements:**
 - GitHub Actions workflow
 - Run `gradlew test` on PR
-- Build Docker image and push to GHCR on merge to `main`
+- Build Docker images and push to GHCR on merge to `main`
 - Environment secrets managed via GitHub repository secrets
+- Cache Gradle dependencies between runs
 
 ---
 
 ## Non-Functional Requirements
 
-| Requirement | Target |
-|---|---|
-| Startup time | < 10 seconds |
-| Request latency (proxy overhead) | < 50ms added over direct OpenRouter call |
-| Rate limit | 10 requests/minute per user (configurable) |
-| JWT expiry | 24 hours (configurable) |
-| Password hashing | BCrypt strength 12 |
-| Port exposure | localhost only (no 0.0.0.0 bindings) |
-| Secrets | Never in source control, never in image layers |
+| Requirement | Target | Status |
+|---|---|---|
+| Spring Boot startup time | < 10 seconds | ✅ ~8s |
+| Proxy overhead | < 50ms | ✅ ~1ms |
+| Rate limit | 10 req/min per user | ✅ Configurable |
+| JWT expiry | 24 hours | ✅ Configurable |
+| Password hashing | BCrypt strength 12 | ✅ |
+| Port exposure | localhost only | ✅ All 127.0.0.1 |
+| Secrets | Never in source control | ✅ |
+| Mobile UI | Responsive | ✅ Drawer pattern |
 
 ---
 
@@ -129,6 +166,7 @@ Build a self-hosted, secure API gateway for OpenRouter that:
 
 - Multi-tenant organization support
 - Billing or paid model access
-- Streaming (SSE) response support — proxy buffering is off, but Spring Boot response handling is not streaming-aware yet
 - OAuth2 / social login
-- Horizontal scaling (single-instance only for now)
+- Horizontal scaling (single-instance only)
+- Streaming SSE responses
+- Image input (vision models partially supported via API but not UI)

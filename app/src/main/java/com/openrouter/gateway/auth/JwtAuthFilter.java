@@ -49,8 +49,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (token != null && jwtUtil.isValid(token)) {
             String email = jwtUtil.extractEmail(token);
 
-            // Load user to verify they still exist and get their role
+            // Load user to verify they still exist, are active, and get their role
             userRepository.findByEmail(email).ifPresent(user -> {
+                if (!user.isActive()) {
+                    log.warn("Rejected token for deactivated user: {}", email);
+                    return;
+                }
                 var authority = new SimpleGrantedAuthority("ROLE_" + user.getRole().name());
                 var authentication = new UsernamePasswordAuthenticationToken(
                         email, null, List.of(authority));

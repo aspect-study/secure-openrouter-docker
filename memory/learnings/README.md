@@ -1,0 +1,192 @@
+# Learnings — Secure OpenRouter Gateway
+
+Hard lessons from building this project. Each entry is a real problem we hit,
+why it happened, and what to do differently next time.
+
+---
+
+## 1. nginx: `set` variable inside location block is unreliable
+
+**What happened:** We tried injecting the API token by writing a `set $api_key "..."` snippet
+into `/etc/nginx/conf.d/openrouter_token.conf` and including it inside the location block.
+nginx started, health check passed, but all `/api/v1/` requests returned 404 with no error logs.
+
+**Why:** The `set` directive inside a location block worked syntactically, but the variable
+scoping caused nginx to silently fall through to `location / { return 404; }` at request time.
+
+**Fix:** Use `envsubst` to substitute the token directly into the nginx config before nginx starts.
+Store the template outside any `tmpfs` mount (`/nginx.conf.template`), write the final
+`/etc/nginx/nginx.conf` in the entrypoint. Scope substitution: `envsubst '${OPENROUTER_API_KEY}'`
+to avoid clobbering nginx's own `$remote_addr` etc.
+
+**See:** ADR-002
+
+---
+
+## 2. `read_only: true` container + tmpfs mount ordering matters
+
+**What happened:** We mounted `/etc/nginx` as tmpfs (to allow writing nginx.conf at runtime)
+but stored the template at `/etc/nginx/nginx.conf.template`. The tmpfs wiped the template
+before the entrypoint could read it.
+
+**Why:** Docker mounts the tmpfs **after** the container filesystem is set up, which empties
+the directory. Any files copied there by the Dockerfile are gone at startup.
+
+**Fix:** Store the template at `/nginx.conf.template` (in root, outside any tmpfs mount).
+Entrypoint reads from `/nginx.conf.template`, writes to `/etc/nginx/nginx.conf` (which is
+on the writable tmpfs).
+
+---
+
+## 3. Gradle Kotlin DSL fails on Java 25
+
+**What happened:** `build.gradle.kts` failed with `java.lang.IllegalArgumentException: 25.0.2`
+inside the Kotlin compiler's `JavaVersion.parse()`.
+
+**Why:** The Kotlin compiler bundled in Gradle 8.12–8.14 doesn't recognize Java 25's version string.
+
+**Fix:** Switch to Groovy DSL (`build.gradle`). Identical build logic, no Kotlin compiler involved.
+
+**See:** ADR-003
+
+---
+
+## 4. Gradle 8.14 does not support Java 25 as the runtime JVM
+
+**What happened:** Running `gradlew.bat build` with Java 25 in PATH failed with
+`Unsupported class file major version 69` (Java 25 = class file version 69).
+
+**Why:** Gradle 8.14 only officially supports up to Java 24 as the Gradle daemon JVM.
+
+**Fix:** Run Gradle on Java 21, use the Gradle toolchain feature to compile with Java 25.
+`run-app.bat` handles this automatically with `switch-java-version.bat 21`.
+
+**See:** ADR-004
+
+---
+
+## 5. shadcn@latest (radix-nova) generates oklch CSS variables, breaking Tailwind hsl() wrappers
+
+**What happened:** After `npx shadcn@latest init`, all UI colors disappeared.
+Dark mode appeared to not work. Mobile layout looked broken.
+
+**Why:** shadcn's radix-nova style uses `oklch()` format for CSS variables.
+Our `tailwind.config.ts` wrapped them as `hsl(var(--background))`.
+The browser received `hsl(oklch(...))` — invalid CSS, renders as transparent.
+
+**The trap:** This is easy to miss because the console shows no errors.
+Everything renders but without any color.
+
+**Fix:** Change all Tailwind color definitions from `hsl(var(--x))` to `var(--x)`.
+`var()` passes through whatever format is in the CSS variable — works with both hsl and oklch.
+
+**See:** ADR-006
+
+---
+
+## 6. shadcn's CommandDialog does not auto-wrap children in Command
+
+**What happened:** `CommandInput` and `CommandList` rendered empty inside `CommandDialog`.
+After wrapping in an explicit `Command`, keyboard navigation still didn't work.
+
+**Why (two separate bugs):**
+1. This `CommandDialog` is `Dialog > DialogContent` only — no `Command` wrapper.
+   cmdk's `CommandInput` and `CommandList` need a `Command` ancestor to function.
+2. A custom div overlay intercepted keyboard events before cmdk's handler.
+
+**Fix:**
+```tsx
+<CommandDialog open={open} onOpenChange={setOpen}>
+  <Command>                    {/* ← required, not automatic */}
+    <CommandInput ... />
+    <CommandList>...</CommandList>
+  </Command>
+</CommandDialog>
+```
+
+**See:** ADR-007
+
+---
+
+## 7. `outline-ring/50` Tailwind class breaks with var() color definitions
+
+**What happened:** After fixing the oklch issue, the CSS threw:
+`The 'outline-ring/50' class does not exist`
+
+**Why:** Tailwind's opacity modifier (`/50`) requires the color token to support opacity.
+Our `ring: 'var(--ring)'` definition doesn't expose an alpha channel for Tailwind to modify.
+
+**Fix:** Remove `outline-ring/50` from `index.css`. The line was added by shadcn's init
+inside a `@layer base { * { @apply border-border outline-ring/50; } }` block.
+
+---
+
+## 8. BCrypt hash in seed.sql was for "password", not "Admin@2026!"
+
+**What happened:** The well-known test hash `$2a$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.`
+was used as a placeholder in `seed.sql`. This hash is for the password `password`, not `Admin@2026!`.
+
+**Fix:** Generate real hashes using the running Spring Boot app's BCrypt encoder.
+The safest approach: register via the API, then UPDATE the role to ADMIN via Navicat.
+Never copy BCrypt hashes from the internet without knowing what password they encode.
+
+---
+
+## 9. Token estimation (4 chars = 1 token) is misleading, not just imprecise
+
+**What happened:** We showed `~X / 32K tokens` based on character counting.
+Users naturally trust displayed numbers. An inaccurate number is worse than no number.
+
+**Why:** The 4:1 ratio is an average for English prose. Code, JSON, non-Latin scripts,
+and special characters all tokenize very differently. The context window sizes were also guessed.
+
+**Fix:** Show real token counts from OpenRouter's `usage` object in the API response.
+Display "last response: X tokens (Y in / Z out)" instead of a live running estimate.
+
+**See:** ADR-008
+
+---
+
+## 10. Responsive layout: don't rely on Tailwind breakpoint classes when CSS conflicts exist
+
+**What happened:** `hidden md:flex` on the desktop sidebar didn't hide it on mobile.
+The sidebar and content rendered side by side even at 390px width.
+
+**Why:** CSS from `@import "shadcn/tailwind.css"` may override Tailwind utility classes
+in unpredictable ways. `hidden md:flex` is a display property — any CSS with higher
+specificity that sets `display` will win.
+
+**Fix:** Use JavaScript-based responsive detection (`useIsMobile` hook with `window.innerWidth`)
+instead of Tailwind breakpoint classes for critical layout visibility. 100% reliable regardless
+of CSS conflicts.
+
+---
+
+## 11. seed.sql doesn't run automatically on existing MySQL volumes
+
+**What happened:** `db/seed.sql` is mounted as a Docker init script
+(`/docker-entrypoint-initdb.d/seed.sql`). MySQL only runs init scripts on the **first**
+container start when the data directory is empty.
+
+**Why:** Docker's MySQL image convention: init scripts run only on initialization.
+If the volume already has data (from a previous run), init scripts are skipped.
+
+**Fix for development:** Run the seed manually via Navicat or `docker compose exec`.
+For production/fresh deploys: the Docker volume auto-runs seed on first start.
+Document this clearly — developers with existing volumes will hit this.
+
+---
+
+## 12. Spring Boot ddl-auto=update adds new columns but doesn't backfill
+
+**What happened:** Adding `active boolean` to `User.java` after the table existed.
+The column was added by Hibernate on next startup, but existing rows got `NULL`
+(despite the Java default of `true`), causing `active` checks to fail.
+
+**Fix:** After adding a new column with a default via ddl-auto=update, run:
+```sql
+UPDATE users SET active = 1 WHERE active IS NULL;
+```
+
+For production, prefer explicit Flyway/Liquibase migrations over `ddl-auto=update`.
+`update` is fine for local dev but risky in production.

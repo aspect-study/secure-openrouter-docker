@@ -9,12 +9,13 @@ Read this before touching any code.
 
 A secure, local API gateway for OpenRouter's free LLM models.
 Three-layer architecture: nginx reverse proxy → Spring Boot backend → MySQL.
+Phase 4 adds a React Admin UI + AI Playground.
 
 ```
-Client
+Client (browser :3000)
   │
   ▼ HTTP :8080
-Spring Boot (JWT auth, rate limiting, logging)
+Spring Boot (JWT auth, rate limiting, logging, conversations)
   │
   ▼ HTTP :8081 (localhost only)
 nginx reverse proxy (token injection, TLS to OpenRouter)
@@ -23,7 +24,7 @@ nginx reverse proxy (token injection, TLS to OpenRouter)
 openrouter.ai (free models only)
   │
   ▼
-MySQL :3309 (users, chat_logs)
+MySQL :3309 (users, chat_logs, conversations, conversation_messages, model_config)
 ```
 
 ---
@@ -34,9 +35,11 @@ MySQL :3309 (users, chat_logs)
 secure-openrouter-docker/
 ├── app/                          # Spring Boot Java 25 application
 │   ├── src/main/java/com/openrouter/gateway/
+│   │   ├── admin/                # AdminController — ROLE_ADMIN endpoints
 │   │   ├── auth/                 # JWT, User entity, register/login
 │   │   ├── chat/                 # ChatController, ChatService, OpenRouterClient
-│   │   ├── config/               # SecurityConfig, HttpClientConfig, AppProperties
+│   │   ├── config/               # SecurityConfig, HttpClientConfig, AppProperties, ModelConfig
+│   │   ├── conversation/         # Conversation, ConversationMessage, ConversationController
 │   │   ├── exception/            # GlobalExceptionHandler
 │   │   ├── logging/              # ChatLog entity + repository
 │   │   └── ratelimit/            # Bucket4j per-user rate limiting
@@ -44,19 +47,38 @@ secure-openrouter-docker/
 │   │   └── application.properties
 │   ├── build.gradle              # Groovy DSL (NOT Kotlin DSL — see ADR-003)
 │   ├── settings.gradle
+│   ├── Dockerfile                # Multi-stage: Java 21 build → Java 25 JRE runtime
 │   └── gradlew.bat               # Always use the wrapper, never global gradle
+├── admin-ui/                     # React + Vite + shadcn/ui admin dashboard
+│   ├── src/
+│   │   ├── hooks/                # useAuth.ts, useWindowSize.ts
+│   │   ├── lib/                  # api.ts (Axios), utils.ts, theme.ts
+│   │   ├── components/
+│   │   │   ├── layout/           # AdminLayout.tsx (responsive sidebar)
+│   │   │   └── ui/               # shadcn/ui components
+│   │   └── pages/
+│   │       ├── LoginPage.tsx
+│   │       ├── PlaygroundPage.tsx
+│   │       └── admin/            # Dashboard, ChatLogs, ModelManager, UserManager
+│   ├── Dockerfile                # Multi-stage: Node build → nginx serve
+│   ├── nginx.conf                # SPA routing (all → index.html)
+│   ├── tailwind.config.ts        # darkMode: class, colors use var() not hsl(var())
+│   └── components.json           # shadcn style: radix-nova
+├── db/
+│   └── seed.sql                  # Admin user + model_config + table definitions
 ├── Dockerfile                    # nginx proxy image
-├── docker-compose.yml            # nginx + MySQL services (Spring Boot Phase 3)
+├── docker-compose.yml            # All 4 services
 ├── nginx.conf                    # Hardened nginx config
-├── docker-entrypoint.sh          # Injects token via envsubst at runtime
+├── docker-entrypoint.sh          # envsubst token injection
 ├── .env.example                  # Template — copy to .env, never commit .env
 ├── run-app.bat                   # Loads .env + starts Spring Boot locally
 ├── test-request.ps1              # PowerShell smoke test for nginx proxy
 ├── test-request.sh               # Bash smoke test for nginx proxy
-├── memory/
-│   ├── adrs/                     # Architectural Decision Records
-│   └── prds/                     # Product Requirements Documents
-└── logs/                         # nginx access/error logs (gitignored)
+├── test-models.ps1               # Tests all free models against the proxy
+└── memory/
+    ├── adrs/                     # Architectural Decision Records
+    ├── prds/                     # Product Requirements Documents
+    └── learnings/                # Hard lessons from development
 ```
 
 ---
@@ -67,10 +89,11 @@ secure-openrouter-docker/
 - Docker Desktop running
 - Java 21 in PATH for running Gradle (see ADR-004)
 - Java 25 installed at `C:\Program Files\Java\jdk-25`
+- Node 22 + npm 10 for admin-ui local dev
 
-### Start infrastructure (nginx proxy + MySQL)
+### Start all infrastructure (nginx + MySQL)
 ```cmd
-docker compose up -d
+docker compose up -d openrouter-proxy openrouter-mysql
 docker compose ps   # verify both show (healthy)
 ```
 
@@ -81,6 +104,13 @@ run-app.bat
 ```
 This loads `.env`, switches to Java 21, and runs `gradlew.bat bootRun`.
 
+### Run admin UI locally (dev mode)
+```cmd
+cd admin-ui
+npm run dev
+```
+Vite proxies `/api` → `localhost:8080`. Open `http://localhost:3000`.
+
 ### Build Spring Boot (no tests)
 ```cmd
 cd app
@@ -88,19 +118,18 @@ switch-java-version.bat 21
 gradlew.bat build -x test
 ```
 
-### Build Spring Boot (with tests)
+### Build admin-ui for production
 ```cmd
-cd app
-switch-java-version.bat 21
-gradlew.bat test
+cd admin-ui
+npm run build
 ```
 
-### Switch Java versions (CMD only)
+### Run full stack in Docker
 ```cmd
-switch-java-version.bat 21   # for Gradle
-switch-java-version.bat 25   # for running the app directly
-switch-java-version.bat 8    # legacy
+docker compose up -d
+docker compose ps   # wait for all 4 (healthy)
 ```
+Access admin UI at `http://localhost:3000`.
 
 ---
 
@@ -113,12 +142,12 @@ All secrets live in `.env` (never committed). Copy from `.env.example`.
 | `OPENROUTER_API_KEY` | nginx | Injected at container startup via envsubst |
 | `DEFAULT_MODEL` | test scripts | Default free model for smoke tests |
 | `MYSQL_ROOT_PASSWORD` | MySQL container | Rarely used directly |
-| `MYSQL_DATABASE` | MySQL + Spring Boot | Database name: `openrouter_gateway` |
+| `MYSQL_DATABASE` | MySQL + Spring Boot | `openrouter_gateway` |
 | `MYSQL_USER` | MySQL + Spring Boot | App-level DB user |
 | `MYSQL_PASSWORD` | MySQL + Spring Boot | App-level DB password |
 | `JWT_SECRET` | Spring Boot | Base64-encoded, minimum 256 bits (32 bytes) |
 | `JWT_EXPIRATION_MS` | Spring Boot | Default: 86400000 (24 hours) |
-| `OPENROUTER_PROXY_URL` | Spring Boot | Default: http://localhost:8081 |
+| `OPENROUTER_PROXY_URL` | Spring Boot | `http://localhost:8081` (local) or `http://openrouter-proxy:8080` (Docker) |
 
 ---
 
@@ -130,45 +159,96 @@ POST /api/auth/register   {"email": "...", "password": "..."}
 POST /api/auth/login      {"email": "...", "password": "..."}
 ```
 
-### Chat (requires JWT)
+### Chat (requires JWT — ROLE_USER or ROLE_ADMIN)
 ```
-POST /api/chat/completions   {"model": "...", "messages": [...]}
-GET  /api/chat/models        Returns allowed free model list
+POST /api/chat/completions           {"model": "...", "messages": [...]}
+GET  /api/chat/models                Returns allowed free model list
+GET  /api/conversations              List user's conversations
+POST /api/conversations              Create conversation {"model": "...", "title": "..."}
+GET  /api/conversations/{id}         Get conversation with messages
+POST /api/conversations/{id}/messages  Send message {"content": "..."}
+DELETE /api/conversations/{id}       Delete conversation
+```
+
+### Admin (requires JWT — ROLE_ADMIN only)
+```
+GET  /api/admin/stats
+GET  /api/admin/chat-logs?page=0&size=20&user=&model=&from=&to=
+GET  /api/admin/chat-logs/export     CSV download
+GET  /api/admin/models
+PUT  /api/admin/models/{modelId}/toggle
+GET  /api/admin/users
+PUT  /api/admin/users/{id}/role      {"role": "USER"|"ADMIN"}
+PUT  /api/admin/users/{id}/status    {"active": true|false}
 ```
 
 ### System
 ```
-GET /actuator/health         Spring Boot health (public)
-GET http://localhost:8081/health   nginx proxy health
+GET /actuator/health                 Spring Boot health (public)
+GET http://localhost:8081/health     nginx proxy health
 ```
+
+---
+
+## Database Schema
+
+Tables managed by Hibernate `ddl-auto=update` except `model_config` which is seeded via `db/seed.sql`:
+
+- `users` — email, password_hash (BCrypt), role (USER/ADMIN), active, timestamps
+- `chat_logs` — per-request log: user, model, tokens, latency, status, response preview
+- `model_config` — enabled/disabled state per free model, seeded from `db/seed.sql`
+- `conversations` — per-user chat sessions: title, model, timestamps
+- `conversation_messages` — messages per conversation: role (user/assistant), content
+
+---
+
+## Default Admin Credentials
+
+Created by `db/seed.sql` on first Docker MySQL startup.
+Register via API and update role via Navicat if seed doesn't run automatically.
+
+```
+Email:    admin@openrouter.local
+Password: Admin@2026!
+```
+**Change this password after first login.**
 
 ---
 
 ## Allowed Free Models
 
+Verified 2026-05-29 via `test-models.ps1`. Update when models change.
+Check: https://openrouter.ai/models?max_price=0
+
 ```
-nvidia/nemotron-nano-9b-v2:free
+nvidia/nemotron-nano-9b-v2:free          ← default, most reliable
 meta-llama/llama-3.3-70b-instruct:free
 meta-llama/llama-3.2-3b-instruct:free
 deepseek/deepseek-v4-flash:free
 qwen/qwen3-coder:free
-nousresearch/hermes-3-llama-3.1-405b:free
+google/gemma-4-31b-it:free
+openai/gpt-oss-120b:free
+openai/gpt-oss-20b:free
+... (see OpenRouterClient.java FREE_MODELS for full list)
 ```
 
-Update in `OpenRouterClient.java` (FREE_MODELS set) when models change.
-Verify current free models: https://openrouter.ai/models?max_price=0
+Update in two places when models change:
+1. `OpenRouterClient.java` — `FREE_MODELS` set
+2. `ModelConfig` seed in `db/seed.sql`
 
 ---
 
 ## Key Constraints
 
-- **Never hardcode the OpenRouter API key** — it lives only in `.env` and is injected by `docker-entrypoint.sh` at runtime via `envsubst`
+- **Never hardcode the OpenRouter API key** — envsubst only, never in image layers
 - **Never expose ports on 0.0.0.0** — all ports bind to `127.0.0.1` only
 - **Gradle wrapper only** — never run `gradle` directly; always use `gradlew.bat`
-- **Gradle runtime must be Java 21** — Gradle 8.14 does not support Java 25 as runtime (see ADR-004)
-- **JWT secret must be Base64-encoded and ≥ 256 bits** — JJWT enforces this at startup
-- **MySQL port is 3309** — 3306 and 3307 are taken by other local instances
-- **nginx proxy port is 8081** — 8080 is used by Spring Boot locally
+- **Gradle runtime must be Java 21** — Gradle 8.14 does not support Java 25 runtime (ADR-004)
+- **JWT secret must be Base64-encoded and ≥ 256 bits** — JJWT enforces at startup
+- **MySQL port is 3309** — 3306/3307 taken by other local instances
+- **nginx proxy port is 8081** — 8080 used by Spring Boot locally
+- **Tailwind colors must use `var()` not `hsl(var())`** — shadcn radix-nova uses oklch CSS variables (ADR-007)
+- **Use CommandDialog not custom overlay** — cmdk keyboard nav requires proper focus trap (ADR-008)
 
 ---
 
@@ -176,17 +256,23 @@ Verify current free models: https://openrouter.ai/models?max_price=0
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `WeakKeyException` on startup | JWT_SECRET too short | Regenerate with 32+ random bytes, Base64-encode |
-| nginx container restarting | `OPENROUTER_API_KEY` missing in `.env` | Add key to `.env` |
-| Port conflict on 8081 | Spring Boot running on 8080, something else on 8081 | Check `netstat -ano` |
-| `No endpoints found` from OpenRouter | Model removed from free tier | Check https://openrouter.ai/models?max_price=0 |
+| `WeakKeyException` on startup | JWT_SECRET too short | Regenerate: `powershell -command "[Convert]::ToBase64String((1..32 \| ForEach-Object { [byte](Get-Random -Max 256) }))"` |
+| nginx container restarting | `OPENROUTER_API_KEY` missing | Add key to `.env` |
+| Spring Boot fails with column error | New entity field, Hibernate not updated | Restart Spring Boot; ddl-auto=update adds columns |
+| Admin login fails | User not in DB or wrong hash | Register via API, update role via Navicat |
+| Dark mode not working | CSS variable format mismatch | Ensure tailwind.config.ts uses `var()` not `hsl(var())` |
+| ↑↓ not working in command palette | Missing `Command` wrapper in `CommandDialog` | Wrap CommandInput/CommandList in `<Command>` inside CommandDialog |
+| `No endpoints found` from OpenRouter | Model removed from free tier | Run `test-models.ps1`, update `FREE_MODELS` |
 | `429 rate limited` from OpenRouter | Free tier upstream throttle | Wait 30s, try different model |
-| Gradle build fails with `version 69` | Running Gradle on Java 25 | `switch-java-version.bat 21` first |
+| Gradle build fails `version 69` | Running Gradle on Java 25 | `switch-java-version.bat 21` first |
+| `outline-ring/50` CSS error | shadcn radix-nova opacity modifier incompatible | Remove `outline-ring/50` from index.css |
 
 ---
 
-## Next Steps (Roadmap)
+## Roadmap
 
-- [ ] Phase 3 — Dockerize Spring Boot, wire all three services in docker-compose
-- [ ] Phase 4 — Admin UI (model usage dashboard, user management)
+- [x] Phase 1 — Secure nginx proxy prototype
+- [x] Phase 2 — Spring Boot JWT gateway, rate limiting, chat logging
+- [x] Phase 3 — Dockerize Spring Boot (multi-stage Dockerfile)
+- [x] Phase 4 — Admin UI + AI Playground (React + shadcn/ui)
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline
