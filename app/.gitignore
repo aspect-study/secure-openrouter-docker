@@ -1,0 +1,15 @@
+# Gradle build cache and wrapper downloads — never commit these
+.gradle/
+build/
+
+# Compiled output
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
