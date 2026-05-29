@@ -1,0 +1,69 @@
+# ============================================================
+# Secure OpenRouter Proxy — docker-compose.yml
+# Usage:
+#   cp .env.example .env   # then fill in your token
+#   docker compose up -d
+# ============================================================
+
+services:
+  openrouter-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openrouter-proxy
+    restart: unless-stopped
+
+    # Load secrets from .env — never hardcode here
+    env_file:
+      - .env
+
+    ports:
+      # Bind only to localhost — never expose 0.0.0.0 unless behind a reverse proxy + TLS
+      - "127.0.0.1:8081:8080"
+
+    # Read-only root filesystem (defense-in-depth)
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:uid=101,gid=101
+      - /var/run:uid=101,gid=101
+      - /tmp:uid=101,gid=101
+      - /etc/nginx:uid=101,gid=101
+
+    # Drop all Linux capabilities; nginx needs none of the defaults
+    cap_drop:
+      - ALL
+
+    # Prevent privilege escalation
+    security_opt:
+      - no-new-privileges:true
+
+    # Hard resource limits (tune as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+    networks:
+      - proxy-net
+
+    volumes:
+      # Mount log directory so logs persist on host but stay out of the image
+      - type: bind
+        source: ./logs
+        target: /var/log/nginx
+        # Logs may contain request data — restrict host-side permissions
+        # (created automatically by compose; chmod 700 after first run)
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  proxy-net:
+    driver: bridge
+    # Isolate from other compose projects
+    internal: false

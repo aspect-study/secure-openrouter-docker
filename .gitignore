@@ -1,0 +1,24 @@
+# ============================================================
+# .gitignore — protect secrets and generated files
+# ============================================================
+
+# Secret — NEVER commit the real .env
+.env
+
+# Nginx logs may contain request data
+logs/
+
+# Docker build cache artifacts
+.docker/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.iml
