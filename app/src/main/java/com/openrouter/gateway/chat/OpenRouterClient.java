@@ -28,14 +28,48 @@ public class OpenRouterClient {
     private static final Logger log = LoggerFactory.getLogger(OpenRouterClient.class);
     private static final String CHAT_COMPLETIONS_PATH = "/api/v1/chat/completions";
 
-    // Whitelist of allowed free models — prevents users from requesting paid models
+    // Whitelist of allowed free models — prevents users from requesting paid models.
+    // Verified against OpenRouter API on 2026-05-29 using test-models.ps1.
+    // Excludes: google/lyria-* (paid music models), minimax/minimax-m2.5:free (404).
+    // 429s at test time are transient rate limits — those models are still valid.
     private static final java.util.Set<String> FREE_MODELS = java.util.Set.of(
+            // NVIDIA
             "nvidia/nemotron-nano-9b-v2:free",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3-nano-30b-a3b:free",
+            "nvidia/nemotron-nano-12b-v2-vl:free",
+            // Meta
             "meta-llama/llama-3.3-70b-instruct:free",
             "meta-llama/llama-3.2-3b-instruct:free",
+            // DeepSeek
             "deepseek/deepseek-v4-flash:free",
+            // Qwen / Alibaba
             "qwen/qwen3-coder:free",
-            "nousresearch/hermes-3-llama-3.1-405b:free"
+            "qwen/qwen3-next-80b-a3b-instruct:free",
+            // Google
+            "google/gemma-4-31b-it:free",
+            "google/gemma-4-26b-a4b-it:free",
+            // OpenAI OSS
+            "openai/gpt-oss-120b:free",
+            "openai/gpt-oss-20b:free",
+            // Poolside
+            "poolside/laguna-xs.2:free",
+            "poolside/laguna-m.1:free",
+            // Liquid AI
+            "liquid/lfm-2.5-1.2b-thinking:free",
+            "liquid/lfm-2.5-1.2b-instruct:free",
+            // Moonshot
+            "moonshotai/kimi-k2.6:free",
+            // Z-AI
+            "z-ai/glm-4.5-air:free",
+            // Cognitive Computations
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            // NousResearch
+            "nousresearch/hermes-3-llama-3.1-405b:free",
+            // OpenRouter special routers
+            "openrouter/owl-alpha",
+            "openrouter/free"
     );
 
     private final HttpClient httpClient;
