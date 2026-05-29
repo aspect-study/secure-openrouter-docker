@@ -49,15 +49,15 @@ secure-openrouter-docker/
 │   ├── settings.gradle
 │   ├── Dockerfile                # Multi-stage: Java 21 build → Java 25 JRE runtime
 │   └── gradlew.bat               # Always use the wrapper, never global gradle
-├── admin-ui/                     # React + Vite + shadcn/ui admin dashboard
+├── admin-ui/                     # React + Vite + shadcn/ui admin dashboard (branded: AspectOR)
 │   ├── src/
 │   │   ├── hooks/                # useAuth.ts, useWindowSize.ts
 │   │   ├── lib/                  # api.ts (Axios), utils.ts, theme.ts
 │   │   ├── components/
 │   │   │   ├── layout/           # AdminLayout.tsx (responsive sidebar)
-│   │   │   └── ui/               # shadcn/ui components
+│   │   │   └── ui/               # shadcn/ui + chat-message.tsx, change-password-dialog.tsx
 │   │   └── pages/
-│   │       ├── LoginPage.tsx
+│   │       ├── LoginPage.tsx     # Sign In + Sign Up tabs
 │   │       ├── PlaygroundPage.tsx
 │   │       └── admin/            # Dashboard, ChatLogs, ModelManager, UserManager
 │   ├── Dockerfile                # Multi-stage: Node build → nginx serve
@@ -155,8 +155,9 @@ All secrets live in `.env` (never committed). Copy from `.env.example`.
 
 ### Auth (public)
 ```
-POST /api/auth/register   {"email": "...", "password": "..."}
-POST /api/auth/login      {"email": "...", "password": "..."}
+POST /api/auth/register          {"email": "...", "password": "..."}
+POST /api/auth/login             {"email": "...", "password": "..."}
+POST /api/auth/change-password   {"currentPassword": "...", "newPassword": "..."}  (requires JWT)
 ```
 
 ### Chat (requires JWT — ROLE_USER or ROLE_ADMIN)
@@ -247,8 +248,13 @@ Update in two places when models change:
 - **JWT secret must be Base64-encoded and ≥ 256 bits** — JJWT enforces at startup
 - **MySQL port is 3309** — 3306/3307 taken by other local instances
 - **nginx proxy port is 8081** — 8080 used by Spring Boot locally
-- **Tailwind colors must use `var()` not `hsl(var())`** — shadcn radix-nova uses oklch CSS variables (ADR-007)
-- **Use CommandDialog not custom overlay** — cmdk keyboard nav requires proper focus trap (ADR-008)
+- **Tailwind colors must use `var()` not `hsl(var())`** — shadcn radix-nova uses oklch CSS variables (ADR-006)
+- **Use CommandDialog not custom overlay** — cmdk keyboard nav requires proper focus trap (ADR-007)
+- **Wrap CommandInput/CommandList in `<Command>`** — this `CommandDialog` does NOT auto-wrap children (ADR-007)
+- **Model switching starts a new conversation** — conversation.model is immutable after creation; switching model creates fresh conversation
+- **429 from OpenRouter is NOT a ChatResult.RateLimited** — it comes through as `Success(statusCode=429)`; check statusCode before saving
+- **react-markdown requires custom `code` component** — default rendering shows raw fences; override with react-syntax-highlighter
+- **Tabs radix-nova renders side-by-side** — add `className="flex-col"` to force vertical stacking
 
 ---
 
@@ -262,6 +268,11 @@ Update in two places when models change:
 | Admin login fails | User not in DB or wrong hash | Register via API, update role via Navicat |
 | Dark mode not working | CSS variable format mismatch | Ensure tailwind.config.ts uses `var()` not `hsl(var())` |
 | ↑↓ not working in command palette | Missing `Command` wrapper in `CommandDialog` | Wrap CommandInput/CommandList in `<Command>` inside CommandDialog |
+| Model switch not working | Conversation stores model at creation | Switching model creates a new conversation — this is by design |
+| Empty bubble after 429 | Upstream error treated as success | `ConversationController` checks `s.statusCode() >= 400` and rolls back |
+| Code blocks render as plain text | Missing react-markdown `components` prop | Pass custom `code` renderer with SyntaxHighlighter to `<ReactMarkdown>` |
+| Tabs side by side instead of stacked | radix-nova `data-horizontal:flex-col` doesn't match | Add `className="flex-col"` to `<Tabs>` |
+| Change password 401 | JWT not sent or user not found | Ensure Bearer token is in Authorization header; user must be active |
 | `No endpoints found` from OpenRouter | Model removed from free tier | Run `test-models.ps1`, update `FREE_MODELS` |
 | `429 rate limited` from OpenRouter | Free tier upstream throttle | Wait 30s, try different model |
 | Gradle build fails `version 69` | Running Gradle on Java 25 | `switch-java-version.bat 21` first |

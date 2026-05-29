@@ -5,10 +5,11 @@ import { cn } from '@/lib/utils'
 import { applyTheme, isDarkMode } from '@/lib/theme'
 import {
   LayoutDashboard, MessageSquare, Cpu, Users,
-  LogOut, Zap, Moon, Sun, ExternalLink, Menu
+  LogOut, Zap, Moon, Sun, ExternalLink, Menu, KeyRound
 } from 'lucide-react'
 import { useState } from 'react'
 import { useIsMobile } from '@/hooks/useWindowSize'
+import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
 
 const navItems = [
   { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -22,6 +23,7 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const [dark, setDark] = useState(isDarkMode)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [changePwOpen, setChangePwOpen] = useState(false)
   const isMobile = useIsMobile()
 
   const toggleTheme = () => {
@@ -36,40 +38,46 @@ export default function AdminLayout() {
   }
 
   const Sidebar = () => (
-    <aside className="w-64 flex flex-col h-full bg-background border-r border-border">
+    <aside className="w-64 flex flex-col h-full border-r border-border" style={{background: 'var(--sidebar)'}}>
       {/* Logo */}
-      <div className="p-6 flex items-center gap-3 border-b border-border">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground">
-          <Zap className="w-4 h-4" />
+      <div className="px-5 py-5 flex items-center gap-3">
+        <div className="relative shrink-0">
+          <div className="absolute inset-0 rounded-xl blur-sm opacity-50" style={{background: 'var(--primary)'}} />
+          <div className="relative flex items-center justify-center w-8 h-8 rounded-xl text-primary-foreground shadow-sm" style={{background: 'var(--primary)'}}>
+            <Zap className="w-4 h-4" />
+          </div>
         </div>
         <div>
-          <p className="font-semibold text-sm">OpenRouter</p>
-          <p className="text-xs text-muted-foreground">Admin Panel</p>
+          <p className="font-semibold text-sm tracking-tight">AspectOR</p>
+          <p className="text-[11px] text-muted-foreground">OpenRouter · Admin Panel</p>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto pb-4">
+        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest px-3 py-2">Management</p>
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} onClick={() => setSidebarOpen(false)}>
             {({ isActive }) => (
               <div className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-              )}>
-                <Icon className="w-4 h-4" />
+              )}
+              style={isActive ? {background: 'var(--primary)', boxShadow: '0 2px 8px oklch(0.52 0.19 264 / 30%)'} : {}}>
+                <Icon className="w-4 h-4 shrink-0" />
                 {label}
               </div>
             )}
           </NavLink>
         ))}
 
-        <div className="pt-2 border-t border-border mt-2">
+        <div className="pt-3 mt-3 border-t border-border">
+          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest px-3 py-2">Tools</p>
           <NavLink to="/playground" onClick={() => setSidebarOpen(false)}>
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
-              <ExternalLink className="w-4 h-4" />
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-all">
+              <ExternalLink className="w-4 h-4 shrink-0" />
               AI Playground
             </div>
           </NavLink>
@@ -77,16 +85,25 @@ export default function AdminLayout() {
       </nav>
 
       {/* User + actions */}
-      <div className="p-4 border-t border-border space-y-2">
-        <div className="px-3 py-2">
-          <p className="text-xs font-medium truncate">{user?.email}</p>
-          <p className="text-xs text-muted-foreground">Administrator</p>
+      <div className="px-3 py-3 border-t border-border">
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-muted/50 mb-2">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
+            style={{background: 'var(--primary)', color: 'var(--primary-foreground)'}}>
+            {user?.email?.[0]?.toUpperCase() ?? 'A'}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium truncate">{user?.email}</p>
+            <p className="text-[11px] text-muted-foreground">Administrator</p>
+          </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="icon" onClick={toggleTheme} className="flex-1">
+          <Button variant="ghost" size="icon" onClick={toggleTheme} className="flex-1" title="Toggle theme">
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleLogout} className="flex-1">
+          <Button variant="ghost" size="icon" onClick={() => setChangePwOpen(true)} className="flex-1" title="Change password">
+            <KeyRound className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={handleLogout} className="flex-1" title="Sign out">
             <LogOut className="w-4 h-4" />
           </Button>
         </div>
@@ -95,6 +112,7 @@ export default function AdminLayout() {
   )
 
   return (
+    <>
     <div className="flex h-screen bg-background">
       {/* Desktop sidebar */}
       {!isMobile && <Sidebar />}
@@ -124,7 +142,7 @@ export default function AdminLayout() {
             </Button>
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">OpenRouter Admin</span>
+              <span className="font-semibold text-sm">AspectOR</span>
             </div>
             <div className="ml-auto flex gap-1">
               <Button variant="ghost" size="icon" onClick={toggleTheme}>
@@ -139,5 +157,8 @@ export default function AdminLayout() {
         </main>
       </div>
     </div>
+
+    <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} />
+    </>
   )
 }

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -70,6 +71,28 @@ public class AuthController {
                         .body(new AuthResponse(null, "Invalid email or password")));
     }
 
+    // ── Change Password ───────────────────────────────────────────────────
+
+    @PostMapping("/change-password")
+    public ResponseEntity<AuthResponse> changePassword(
+            @AuthenticationPrincipal String userEmail,
+            @Valid @RequestBody ChangePasswordRequest request) {
+
+        return userRepository.findByEmail(userEmail)
+                .map(user -> {
+                    if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                                .body(new AuthResponse(null, "Current password is incorrect"));
+                    }
+                    user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+                    userRepository.save(user);
+                    log.info("Password changed for user: {}", userEmail);
+                    return ResponseEntity.ok(new AuthResponse(null, "Password changed successfully"));
+                })
+                .orElse(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new AuthResponse(null, "User not found")));
+    }
+
     // ── DTOs (Java 25 records) ────────────────────────────────────────────
 
     /**
@@ -86,5 +109,10 @@ public class AuthController {
     public record AuthResponse(
             String token,
             String message
+    ) {}
+
+    public record ChangePasswordRequest(
+            @NotBlank String currentPassword,
+            @NotBlank @Size(min = 8, max = 100) String newPassword
     ) {}
 }

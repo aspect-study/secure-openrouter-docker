@@ -132,6 +132,18 @@ Build a self-hosted, secure API gateway for OpenRouter that:
 - Deactivated user's JWT is rejected on next request
 - All admin tables load real data from DB
 
+**Post-phase additions (same release):**
+- Sign Up tab on login page — open registration, auto-login, password strength bar
+- Change Password dialog — accessible from both sidebars via 🔑 icon
+- Markdown rendering with syntax highlighting (`react-markdown` + `react-syntax-highlighter`)
+- 429 / upstream error handling — rolls back user message, restores input, shows contextual toast
+- Model switch fix — switching model creates a new conversation to avoid model mismatch
+- Real token usage display from OpenRouter `usage` response object
+- Brand renamed to **AspectOR** throughout the UI
+- Full design overhaul — warm off-white light mode, Claude-style dark mode (warm charcoal + coral-orange primary)
+- Per-model descriptions with 5W's, strengths, limitations in Model Manager
+- Compact model info in command palette (use case, limitation, context, RPM per model)
+
 ---
 
 ### Phase 5 — CI/CD Pipeline 🔲 Pending

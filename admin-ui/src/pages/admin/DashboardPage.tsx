@@ -49,21 +49,26 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+    <div className="p-7 space-y-7">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Monitor usage and activity</p>
+      </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {loading ? Array(4).fill(0).map((_, i) => (
           <Card key={i}><CardContent className="p-6"><Skeleton className="h-16" /></CardContent></Card>
         )) : statCards.map(({ title, value, icon: Icon, color }) => (
-          <Card key={title}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-              <Icon className={`w-4 h-4 ${color}`} />
+          <Card key={title} className="border-border/60 hover:shadow-card-hover transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 pt-5 px-5">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</CardTitle>
+              <div className={`p-1.5 rounded-lg bg-muted/60`}>
+                <Icon className={`w-3.5 h-3.5 ${color}`} />
+              </div>
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{value}</p>
+            <CardContent className="px-5 pb-5">
+              <p className="text-3xl font-bold tracking-tight">{value}</p>
             </CardContent>
           </Card>
         ))}

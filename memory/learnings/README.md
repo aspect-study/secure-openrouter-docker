@@ -190,3 +190,78 @@ UPDATE users SET active = 1 WHERE active IS NULL;
 
 For production, prefer explicit Flyway/Liquibase migrations over `ddl-auto=update`.
 `update` is fine for local dev but risky in production.
+
+---
+
+## 13. OpenRouter 429 was silently treated as a success
+
+**What happened:** When OpenRouter returned HTTP 429 (rate limit), the proxy forwarded it
+as `ChatResult.Success(statusCode=429, body="{error:...}")`. `ConversationController`
+treated any `Success` case as a valid response, saved an empty assistant message to the DB,
+and returned 200 to the frontend. The UI showed an empty bubble with no error.
+
+**Why:** `ChatService` returns `Success` for any completed proxy call — it only returns
+`RateLimited` for our own Bucket4j rate limiter, not for upstream OpenRouter errors.
+
+**Fix:** Check `s.statusCode() >= 400` before saving the message. Roll back the user message,
+parse the OpenRouter error body, and return the appropriate HTTP status to the frontend.
+Also restore the input text on the frontend so the user doesn't lose their message.
+
+---
+
+## 14. Conversation model doesn't update when switching models in the UI
+
+**What happened:** User switched model via command palette → `setSelectedModel` updated
+the frontend state but the active conversation still stored the old model in the DB.
+Every subsequent message used the original model regardless of what the UI showed.
+
+**Why:** `ConversationController.sendMessage` uses `conversation.getModel()` (from DB),
+not the model the frontend currently has selected.
+
+**Fix:** When switching to a different model, automatically start a new conversation
+with the new model. The old conversation stays in history. This is also how Claude behaves —
+model switches create a new conversation thread.
+
+---
+
+## 15. react-markdown needs explicit `components` prop to render code blocks
+
+**What happened:** Installing `react-markdown` and wrapping message content in
+`<ReactMarkdown>` rendered text correctly but code blocks still showed as plain text
+with the triple-backtick fences visible.
+
+**Why:** `react-markdown` renders code blocks as plain `<code>` elements by default.
+Syntax highlighting requires overriding the `code` component with `react-syntax-highlighter`.
+
+**Fix:** Pass a `components` prop with a custom `code` renderer that detects block vs inline
+code via the `language-xxx` className, uses `Prism` for block highlighting,
+and falls back to styled inline `<code>` for inline snippets.
+
+---
+
+## 16. radix-nova Tabs renders list and content side-by-side, not stacked
+
+**What happened:** After adding Sign Up / Sign In tabs to the login page,
+the `TabsList` rendered on the LEFT and `TabsContent` on the RIGHT — side by side,
+not stacked vertically as expected.
+
+**Why:** The radix-nova `Tabs` component uses `data-horizontal:flex-col` to set vertical
+stacking when `orientation="horizontal"`. But `data-horizontal:` is a Tailwind attribute
+variant matching `data-horizontal` (boolean attribute), not `data-orientation="horizontal"`.
+The selector never matches, so the layout defaults to `flex` (row direction).
+
+**Fix:** Add `className="flex-col"` directly to the `<Tabs>` component to force vertical stacking.
+
+---
+
+## 17. Tailwind oklch CSS variables break `oklch(from var(...) ...)` relative color syntax
+
+**What happened:** Used CSS relative color syntax `oklch(from var(--primary) l c h / 25%)`
+in inline styles to create tinted shadows. This worked in some browsers but not all,
+and caused silent failures in the box-shadow on the user chat bubble.
+
+**Why:** CSS relative color syntax (`oklch(from ...)`) is a newer CSS feature (baseline 2024).
+Not all browser versions support it, especially in combination with CSS custom properties.
+
+**Fix:** Use explicit oklch values for shadows rather than relative color syntax.
+For primary-tinted shadows, hardcode the approximate oklch values or use opacity variants.

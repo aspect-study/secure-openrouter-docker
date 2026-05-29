@@ -35,6 +35,8 @@ export const authApi = {
     api.post('/auth/login', { email, password }),
   register: (email: string, password: string) =>
     api.post('/auth/register', { email, password }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/auth/change-password', { currentPassword, newPassword }),
 }
 
 // ── Chat / Conversations ──────────────────────────────────────────────────

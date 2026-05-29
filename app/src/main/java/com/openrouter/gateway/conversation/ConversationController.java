@@ -124,12 +124,21 @@ public class ConversationController {
 
             return switch (result) {
                 case ChatService.ChatResult.Success s -> {
+                    // Non-2xx from OpenRouter (e.g. 429, 503) — roll back user message, return error
+                    if (s.statusCode() >= 400) {
+                        conversation.getMessages().remove(conversation.getMessages().size() - 1);
+                        conversationRepository.save(conversation);
+                        String errorMsg = parseOpenRouterError(s.body());
+                        yield ResponseEntity.status(s.statusCode())
+                                .body(Map.of("error", errorMsg, "statusCode", s.statusCode()));
+                    }
+
                     // Parse assistant response and persist
                     String assistantContent = extractContent(s.body());
                     ConversationMessage assistantMsg = new ConversationMessage(
                             conversation, ConversationMessage.Role.assistant, assistantContent);
                     conversation.getMessages().add(assistantMsg);
-                    conversationRepository.save(conversation);
+                    conversationRepository.saveAndFlush(conversation);
 
                     // Parse real token usage from OpenRouter response
                     Map<String, Integer> usage = parseUsage(s.body());
@@ -177,6 +186,23 @@ public class ConversationController {
         }
     }
 
+    private String parseOpenRouterError(String responseBody) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(responseBody);
+            // OpenRouter wraps errors as { "error": { "message": "...", "code": ... } }
+            com.fasterxml.jackson.databind.JsonNode error = root.path("error");
+            if (!error.isMissingNode()) {
+                String msg = error.path("message").asText("");
+                // Strip verbose upstream details — keep first sentence only
+                int dot = msg.indexOf('.');
+                return dot > 0 ? msg.substring(0, dot + 1) : (msg.isEmpty() ? "OpenRouter error" : msg);
+            }
+            return "OpenRouter returned an error";
+        } catch (Exception e) {
+            return "OpenRouter returned an error";
+        }
+    }
+
     private Map<String, Integer> parseUsage(String responseBody) {
         try {
             JsonNode usage = objectMapper.readTree(responseBody).path("usage");
@@ -213,8 +239,11 @@ public class ConversationController {
 
         public record MessageDto(Long id, String role, String content, String createdAt) {
             public static MessageDto from(ConversationMessage m) {
-                return new MessageDto(m.getId(), m.getRole().name(),
-                        m.getContent(), m.getCreatedAt().toString());
+                // createdAt is @CreationTimestamp — null before Hibernate flush
+                String ts = m.getCreatedAt() != null
+                        ? m.getCreatedAt().toString()
+                        : java.time.LocalDateTime.now().toString();
+                return new MessageDto(m.getId(), m.getRole().name(), m.getContent(), ts);
             }
         }
 

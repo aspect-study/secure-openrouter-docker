@@ -9,9 +9,11 @@ import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, Comma
 import { toast } from 'sonner'
 import { cn, modelEmoji, modelDisplayName, modelCapability, modelDescription, formatTime } from '@/lib/utils'
 import { applyTheme, isDarkMode } from '@/lib/theme'
+import { ChatMessage } from '@/components/ui/chat-message'
 import { useIsMobile } from '@/hooks/useWindowSize'
+import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
 import {
-  Send, Plus, Trash2, Menu, X, Copy,
+  Send, Plus, Trash2, Menu, X, Copy, KeyRound,
   Moon, Sun, LogOut, Settings, ChevronRight, Zap
 } from 'lucide-react'
 
@@ -32,6 +34,7 @@ export default function PlaygroundPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [lastUsage, setLastUsage] = useState<TokenUsage | null>(null)
+  const [changePwOpen, setChangePwOpen] = useState(false)
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -144,10 +147,27 @@ export default function PlaygroundPage() {
         setConversations(prev => prev.map(c => c.id === convId ? { ...c, title } : c))
       }
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })
-        ?.response?.data?.error ?? 'Failed to send message'
-      toast.error(msg)
+      const errData = (err as { response?: { status?: number; data?: { error?: string; statusCode?: number } } })?.response
+      const status = errData?.status ?? 0
+      const msg = errData?.data?.error ?? 'Failed to send message'
+
+      if (status === 429) {
+        toast.error(`Rate limited: ${msg}`, {
+          description: 'Wait a few seconds, then try again or switch to a different model.',
+          duration: 6000,
+        })
+      } else if (status >= 500) {
+        toast.error('Model temporarily unavailable', {
+          description: 'Try switching to a different model via Ctrl+K.',
+          duration: 5000,
+        })
+      } else {
+        toast.error(msg)
+      }
+      // Remove the optimistically added user message
       setMessages(prev => prev.slice(0, -1))
+      // Restore the input so the user doesn't lose their message
+      setInput(userMessage.content)
     } finally {
       setLoading(false)
       textareaRef.current?.focus()
@@ -238,7 +258,11 @@ export default function PlaygroundPage() {
               <Settings className="w-3 h-3" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7 flex-1"
+          <Button variant="ghost" size="icon" className="h-7 w-7 flex-1" title="Change password"
+            onClick={() => setChangePwOpen(true)}>
+            <KeyRound className="w-3 h-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 flex-1" title="Sign out"
             onClick={() => { logout(); navigate('/login') }}>
             <LogOut className="w-3 h-3" />
           </Button>
@@ -270,7 +294,7 @@ export default function PlaygroundPage() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
+        <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0 backdrop-blur-sm bg-background/80 sticky top-0 z-10">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </Button>
@@ -307,23 +331,24 @@ export default function PlaygroundPage() {
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 && !loading ? (
             // Empty state
-            <div className="flex flex-col items-center justify-center h-full gap-6 text-center">
-              <div>
-                <span className="text-6xl">{modelEmoji(selectedModel)}</span>
-                <h2 className="text-xl font-semibold mt-3">
-                  Chat with {modelDisplayName(selectedModel)}
+            <div className="flex flex-col items-center justify-center h-full gap-8 text-center px-4">
+              <div className="space-y-2">
+                <span className="text-5xl block">{modelEmoji(selectedModel)}</span>
+                <h2 className="text-2xl font-semibold tracking-tight mt-4">
+                  How can I assist you today?
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  <Badge variant="secondary">{modelCapability(selectedModel)}</Badge>
+                <p className="text-sm text-muted-foreground">
+                  Using <span className="font-medium text-foreground">{modelDisplayName(selectedModel)}</span>
+                  &nbsp;·&nbsp;<Badge variant="secondary" className="text-xs">{modelCapability(selectedModel)}</Badge>
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
                 {suggestedPrompts.map(prompt => (
-                  <Button key={prompt} variant="outline" size="sm"
-                    className="text-xs h-auto py-2 text-left whitespace-normal"
+                  <button key={prompt}
+                    className="text-left px-4 py-3 rounded-xl border border-border bg-card hover:bg-accent hover:border-primary/30 transition-all text-sm text-muted-foreground hover:text-foreground shadow-sm"
                     onClick={() => { setInput(prompt); textareaRef.current?.focus() }}>
                     {prompt}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </div>
@@ -334,14 +359,21 @@ export default function PlaygroundPage() {
                   {msg.role === 'assistant' && (
                     <span className="text-2xl mr-2 mt-1 shrink-0">{modelEmoji(selectedModel)}</span>
                   )}
-                  <div className={cn('max-w-[75%] space-y-1')}>
+                  <div className={cn(msg.role === 'user' ? 'max-w-[72%]' : 'max-w-[85%]', 'space-y-1')}>
                     <div className={cn(
-                      'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
+                      'rounded-2xl px-4 py-3 text-sm shadow-sm',
                       msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                        : 'bg-muted text-foreground rounded-bl-sm'
-                    )}>
-                      {msg.content}
+                        ? 'rounded-br-sm text-primary-foreground'
+                        : 'rounded-bl-sm bg-card border border-border text-foreground'
+                    )}
+                    style={msg.role === 'user' ? {
+                      background: 'linear-gradient(135deg, var(--primary) 0%, oklch(from var(--primary) calc(l - 0.05) calc(c + 0.02) calc(h - 5)) 100%)',
+                      boxShadow: '0 2px 12px oklch(from var(--primary) l c h / 25%)'
+                    } : {}}>
+                      {msg.role === 'user'
+                        ? <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        : <ChatMessage content={msg.content} isDark={dark} />
+                      }
                     </div>
                     <div className={cn('flex items-center gap-1', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
                       {msg.createdAt && (
@@ -379,7 +411,7 @@ export default function PlaygroundPage() {
         {/* Input — Claude-style: full-width card with send inside */}
         <div className="border-t border-border px-4 py-4 shrink-0">
           <div className="max-w-4xl mx-auto">
-            <div className="relative flex flex-col rounded-2xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-ring">
+            <div className="relative flex flex-col rounded-2xl border border-border bg-card transition-shadow focus-within:shadow-[0_0_0_2px_var(--ring),0_4px_16px_oklch(from_var(--primary)_l_c_h_/_12%)]" style={{boxShadow: '0 2px 8px oklch(0 0 0 / 6%)'}}>
               <Textarea
                 ref={textareaRef}
                 placeholder="Message the AI... (Enter to send · Shift+Enter for new line)"
@@ -401,11 +433,20 @@ export default function PlaygroundPage() {
               />
               {/* Footer bar inside the card */}
               <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 border-t border-border/50">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{modelEmoji(selectedModel)}</span>
-                  <span className="truncate max-w-[140px]">{modelDisplayName(selectedModel)}</span>
+                <div className="flex items-center gap-2">
+                  {/* Clickable model name — opens command palette */}
+                  <button
+                    onClick={() => setCommandOpen(true)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group"
+                  >
+                    <span>{modelEmoji(selectedModel)}</span>
+                    <span className="truncate max-w-[120px] group-hover:underline underline-offset-2">
+                      {modelDisplayName(selectedModel)}
+                    </span>
+                    <ChevronRight className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </button>
                   {input.length > 0 && (
-                    <span className="text-muted-foreground/60">{input.length} chars</span>
+                    <span className="text-xs text-muted-foreground/50">{input.length}</span>
                   )}
                 </div>
                 <Button
@@ -426,6 +467,8 @@ export default function PlaygroundPage() {
       </div>
 
       {/* Command palette — uses CommandDialog for proper focus trap + keyboard nav */}
+      <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} />
+
       <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
         <Command>
           {/* Active model indicator */}
@@ -437,7 +480,7 @@ export default function PlaygroundPage() {
 
           <CommandInput placeholder="Search free models..." />
 
-          <CommandList className="max-h-[420px]">
+          <CommandList className="max-h-[220px]">
           <CommandEmpty>No models found.</CommandEmpty>
 
           {[
@@ -467,10 +510,27 @@ export default function PlaygroundPage() {
                     <CommandItem
                       key={model.id}
                       value={`${modelDisplayName(model.id)} ${model.id}`}
-                      onSelect={() => {
-                        setSelectedModel(model.id)
+                      onSelect={async () => {
+                        const newModel = model.id
+                        setSelectedModel(newModel)
                         setCommandOpen(false)
-                        toast.success(`Switched to ${modelDisplayName(model.id)}`)
+
+                        // If switching to a different model, start a fresh conversation
+                        if (activeConversation && activeConversation.model !== newModel) {
+                          try {
+                            const r = await chatApi.createConversation(newModel)
+                            const conv: Conversation = r.data
+                            setConversations(prev => [conv, ...prev])
+                            setActiveConversation(conv)
+                            setMessages([])
+                            setLastUsage(null)
+                            toast.success(`New conversation with ${modelDisplayName(newModel)}`)
+                          } catch {
+                            toast.error('Failed to start new conversation')
+                          }
+                        } else {
+                          toast.success(`Switched to ${modelDisplayName(newModel)}`)
+                        }
                       }}
                       className={cn(
                         'cursor-pointer rounded-lg my-0.5 px-3 py-2',
@@ -517,6 +577,7 @@ export default function PlaygroundPage() {
             )
           })}
         </CommandList>
+
 
           {/* Footer */}
           <div className="px-4 py-2 border-t border-border flex items-center justify-between">
