@@ -120,18 +120,19 @@ public class AdminController {
         );
     }
 
-    @PutMapping("/models/{modelId}/toggle")
+    @PutMapping("/models/toggle")
     public ResponseEntity<ModelConfigDto> toggleModel(
-            @PathVariable String modelId) {
-        return modelConfigRepository.findByModelId(modelId)
-                .map(config -> {
-                    config.setEnabled(!config.isEnabled());
-                    ModelConfig saved = modelConfigRepository.save(config);
-                    log.info("Model {} {}",
-                            modelId, saved.isEnabled() ? "enabled" : "disabled");
-                    return ResponseEntity.ok(ModelConfigDto.from(saved));
-                })
-                .orElse(ResponseEntity.notFound().build());
+            @RequestBody java.util.Map<String, String> body) {
+        String modelId = body.get("modelId");
+        if (modelId == null || modelId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        ModelConfig config = modelConfigRepository.findByModelId(modelId).orElse(null);
+        if (config == null) return ResponseEntity.notFound().build();
+        config.setEnabled(!config.isEnabled());
+        ModelConfig saved = modelConfigRepository.save(config);
+        log.info("Model {} {}", modelId, saved.isEnabled() ? "enabled" : "disabled");
+        return ResponseEntity.ok(ModelConfigDto.from(saved));
     }
 
     // ── Users ─────────────────────────────────────────────────────────────

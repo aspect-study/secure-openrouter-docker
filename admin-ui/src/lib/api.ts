@@ -60,7 +60,7 @@ export const adminApi = {
     api.get('/admin/chat-logs/export', { responseType: 'blob' }),
   getModels: () => api.get('/admin/models'),
   toggleModel: (modelId: string) =>
-    api.put(`/admin/models/${encodeURIComponent(modelId)}/toggle`),
+    api.put('/admin/models/toggle', { modelId }),
   getUsers: () => api.get('/admin/users'),
   updateUserRole: (id: number, role: string) =>
     api.put(`/admin/users/${id}/role`, { role }),
