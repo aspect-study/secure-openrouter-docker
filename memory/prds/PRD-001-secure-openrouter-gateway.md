@@ -79,7 +79,8 @@ Build a self-hosted, secure API gateway for OpenRouter that:
 - Health check on `/actuator/health`
 - Updated `docker-compose.yml` — all 4 services with `depends_on` health conditions
 - `OPENROUTER_PROXY_URL` switches from `localhost:8081` → `openrouter-proxy:8080` via environment override
-- `db/seed.sql` mounts as Docker init script for first-run setup
+- `db/seed.sql` originally mounted as Docker init script for first-run setup
+  *(superseded 2026-05-31: schema now managed by Flyway — see ADR-010)*
 
 **Acceptance criteria met:**
 - `docker compose up -d` brings entire stack up

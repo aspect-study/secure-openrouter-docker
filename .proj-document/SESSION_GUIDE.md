@@ -252,4 +252,4 @@ Update CLAUDE.md troubleshooting if needed.
 
 ---
 
-*Last updated: 2026-05-29 — after Phase 4 completion (AspectOR UI, sign-up, change password, markdown rendering, design overhaul)*
+*Last updated: 2026-05-31 — after Flyway migration (ADR-010: schema ownership moved from ddl-auto=update to Flyway V1–V3)*

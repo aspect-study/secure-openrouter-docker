@@ -44,7 +44,11 @@ secure-openrouter-docker/
 │   │   ├── logging/              # ChatLog entity + repository
 │   │   └── ratelimit/            # Bucket4j per-user rate limiting
 │   ├── src/main/resources/
-│   │   └── application.properties
+│   │   ├── application.properties
+│   │   └── db/migration/         # Flyway migrations (schema owner — see ADR-010)
+│   │       ├── V1__initial_schema.sql      # All 5 tables
+│   │       ├── V2__seed_model_config.sql   # 24 free model rows
+│   │       └── V3__seed_admin_user.sql     # Default admin user
 │   ├── build.gradle              # Groovy DSL (NOT Kotlin DSL — see ADR-003)
 │   ├── settings.gradle
 │   ├── Dockerfile                # Multi-stage: Java 21 build → Java 25 JRE runtime
@@ -65,7 +69,7 @@ secure-openrouter-docker/
 │   ├── tailwind.config.ts        # darkMode: class, colors use var() not hsl(var())
 │   └── components.json           # shadcn style: radix-nova
 ├── db/
-│   └── seed.sql                  # Admin user + model_config + table definitions
+│   └── seed.sql                  # DEPRECATED — reference only; schema now owned by Flyway
 ├── Dockerfile                    # nginx proxy image
 ├── docker-compose.yml            # All 4 services
 ├── nginx.conf                    # Hardened nginx config
@@ -241,6 +245,9 @@ Update in two places when models change:
 
 ## Key Constraints
 
+- **Schema is owned by Flyway** — `ddl-auto=validate`; never change back to `update` or `create`
+- **Never edit applied Flyway migrations** — V1/V2/V3 are locked; add V4+ for any schema change
+- **Flyway boolean columns must be `BIT(1)`** — Hibernate 6 / MySQL8Dialect maps Java `boolean` → `Types#BOOLEAN` → `BIT`; using `TINYINT` causes `SchemaManagementException` on startup
 - **Never hardcode the OpenRouter API key** — envsubst only, never in image layers
 - **Never expose ports on 0.0.0.0** — all ports bind to `127.0.0.1` only
 - **Gradle wrapper only** — never run `gradle` directly; always use `gradlew.bat`
@@ -262,6 +269,8 @@ Update in two places when models change:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
+| `SchemaManagementException: wrong column type [enabled/active]` | Flyway V1 used `TINYINT` instead of `BIT(1)` | Hibernate 6 expects `BIT` for Java `boolean`; drop DB and re-run with corrected V1 |
+| Flyway checksum mismatch on startup | Applied migration file was edited | Never edit V1–V3; create V4+ for changes; dev reset: drop DB and re-run |
 | `WeakKeyException` on startup | JWT_SECRET too short | Regenerate: `powershell -command "[Convert]::ToBase64String((1..32 \| ForEach-Object { [byte](Get-Random -Max 256) }))"` |
 | nginx container restarting | `OPENROUTER_API_KEY` missing | Add key to `.env` |
 | Spring Boot fails with column error | New entity field, Hibernate not updated | Restart Spring Boot; ddl-auto=update adds columns |

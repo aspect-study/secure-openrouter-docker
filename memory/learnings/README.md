@@ -265,3 +265,42 @@ Not all browser versions support it, especially in combination with CSS custom p
 
 **Fix:** Use explicit oklch values for shadows rather than relative color syntax.
 For primary-tinted shadows, hardcode the approximate oklch values or use opacity variants.
+
+---
+
+## 18. Hibernate 6 / MySQL8Dialect maps Java `boolean` to `BIT`, not `TINYINT`
+
+**What happened:** Flyway V1 created boolean columns as `TINYINT` (common MySQL convention).
+Spring Boot failed on startup with:
+`SchemaManagementException: wrong column type [enabled] in table [model_config]; found [tinyint (Types#TINYINT)], but expecting [bit (Types#BOOLEAN)]`
+
+**Why:** Hibernate 6 with `MySQL8Dialect` maps Java `boolean` → `Types#BOOLEAN` → `BIT`.
+`ddl-auto=validate` enforces this strictly — it checks the JDBC `Types` constant, not just
+the SQL type name. `TINYINT` and `BIT(1)` store the same byte but map to different JDBC types,
+so validation fails even though data would be compatible.
+
+**Fix:** Use `BIT(1)` in all Flyway CREATE TABLE statements for boolean columns.
+Use `b'1'` / `b'0'` literals in seed INSERT statements for BIT columns (not `TRUE`/`FALSE`).
+
+**Rule:** When using `ddl-auto=validate` with Flyway, derive column types from Hibernate's
+generated DDL, not from general MySQL convention. The safest way to discover the exact
+expected type is to read the `SchemaManagementException` error message.
+
+---
+
+## 19. Never edit a Flyway migration after it has been applied
+
+**What happened:** V1 had `TINYINT(1)` (triggering a deprecation warning) and V2 had
+`TRUE` instead of `b'1'` for BIT columns. Editing the files in place and restarting caused
+Flyway to fail with a checksum mismatch — even in a dev environment where the DB had already
+been wiped and recreated.
+
+**Why:** Flyway checksums each migration file on every startup and compares against the
+`flyway_schema_history` table. If the file changes after being applied, Flyway refuses to start.
+
+**Fix for development:** Drop the database (`DROP DATABASE openrouter_gateway`), recreate it,
+and restart the app — Flyway re-applies all migrations from scratch against a clean schema.
+
+**Rule for production:** Never edit applied migrations. Add a new `V4__...sql` migration to
+correct any issue. Editing V1–V3 is only acceptable in early development before the first
+shared deployment, and requires all developers to reset their local DBs.
