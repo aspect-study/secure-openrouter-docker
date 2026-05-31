@@ -29,6 +29,9 @@ dependencies {
     // MySQL driver
     runtimeOnly 'com.mysql:mysql-connector-j'
 
+    // Flyway — schema migrations (includes flyway-core; do NOT add flyway-core separately)
+    implementation 'org.flywaydb:flyway-mysql:10.20.1'
+
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

@@ -66,8 +66,8 @@ services:
       - "127.0.0.1:3309:3306"
     volumes:
       - openrouter-mysql-data:/var/lib/mysql
-      # Seed script runs automatically on first container start
-      - ./db/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+      # Schema and seed data are now managed by Flyway (app/src/main/resources/db/migration/).
+      # The old seed.sql is kept at db/seed.sql for reference but is no longer mounted.
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci

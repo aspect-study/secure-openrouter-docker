@@ -1,7 +1,13 @@
 -- ============================================================
--- seed.sql — Runs automatically on first MySQL container start
--- via Docker's /docker-entrypoint-initdb.d/ mechanism.
--- Idempotent: uses INSERT IGNORE so re-runs are safe.
+-- DEPRECATED — DO NOT USE
+-- Schema and seed data are now managed by Flyway.
+-- See: app/src/main/resources/db/migration/
+--   V1__initial_schema.sql  — all CREATE TABLE statements
+--   V2__seed_model_config.sql — model_config rows
+--   V3__seed_admin_user.sql   — admin user
+--
+-- This file is kept for historical reference only.
+-- It is NOT mounted into the MySQL container (see docker-compose.yml).
 -- ============================================================
 
 USE openrouter_gateway;
