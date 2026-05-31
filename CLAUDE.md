@@ -39,7 +39,8 @@ secure-openrouter-docker/
 │   │   ├── auth/                 # JWT, User entity, register/login
 │   │   ├── chat/                 # ChatController, ChatService, OpenRouterClient
 │   │   ├── config/               # SecurityConfig, HttpClientConfig, AppProperties, ModelConfig
-│   │   ├── conversation/         # Conversation, ConversationMessage, ConversationController
+│   │   ├── conversation/         # Conversation, ConversationMessage, ConversationController,
+│   │   │                         # ConversationService, MarkdownNormalizer
 │   │   ├── exception/            # GlobalExceptionHandler
 │   │   ├── logging/              # ChatLog entity + repository
 │   │   └── ratelimit/            # Bucket4j per-user rate limiting
@@ -55,7 +56,7 @@ secure-openrouter-docker/
 │   └── gradlew.bat               # Always use the wrapper, never global gradle
 ├── admin-ui/                     # React + Vite + shadcn/ui admin dashboard (branded: AspectOR)
 │   ├── src/
-│   │   ├── hooks/                # useAuth.ts, useWindowSize.ts
+│   │   ├── hooks/                # useAuth.ts, AuthProvider.tsx, useWindowSize.ts
 │   │   ├── lib/                  # api.ts (Axios), utils.ts, theme.ts
 │   │   ├── components/
 │   │   │   ├── layout/           # AdminLayout.tsx (responsive sidebar)
@@ -166,13 +167,21 @@ POST /api/auth/change-password   {"currentPassword": "...", "newPassword": "..."
 
 ### Chat (requires JWT — ROLE_USER or ROLE_ADMIN)
 ```
-POST /api/chat/completions           {"model": "...", "messages": [...]}
-GET  /api/chat/models                Returns allowed free model list
-GET  /api/conversations              List user's conversations
-POST /api/conversations              Create conversation {"model": "...", "title": "..."}
-GET  /api/conversations/{id}         Get conversation with messages
-POST /api/conversations/{id}/messages  Send message {"content": "..."}
-DELETE /api/conversations/{id}       Delete conversation
+POST /api/chat/completions                        {"model": "...", "messages": [...]}
+GET  /api/chat/models                             Returns allowed free model list
+GET  /api/conversations                           List user's conversations
+POST /api/conversations                           Create conversation {"model": "...", "title": "..."}
+GET  /api/conversations/{id}                      Get conversation with messages
+POST /api/conversations/{id}/messages             Send message (blocking, full response)
+POST /api/conversations/{id}/messages/stream      Send message (SSE streaming)
+DELETE /api/conversations/{id}                    Delete conversation
+```
+
+**SSE stream event protocol:**
+```
+event: token   data: "<JSON-encoded token string>"   (one per delta)
+event: done    data: {"messageId":1,"conversationId":1,"title":"...","normalizedContent":"...","usage":{...}}
+event: error   data: {"error":"...","remainingTokens":0}
 ```
 
 ### Admin (requires JWT — ROLE_ADMIN only)
@@ -262,6 +271,13 @@ Update in two places when models change:
 - **429 from OpenRouter is NOT a ChatResult.RateLimited** — it comes through as `Success(statusCode=429)`; check statusCode before saving
 - **react-markdown requires custom `code` component** — default rendering shows raw fences; override with react-syntax-highlighter
 - **Tabs radix-nova renders side-by-side** — add `className="flex-col"` to force vertical stacking
+- **SSE token data must be JSON-encoded** — raw `\n` in SSE `data:` fields is treated as an empty line by the protocol, silently dropping newlines. Use `objectMapper.writeValueAsString(token)` on the backend; `JSON.parse(data)` on the frontend
+- **SseEmitter.complete() triggers ASYNC dispatcher** — Spring Security intercepts the async re-dispatch with no SecurityContext and throws `Access Denied`. Fix: `.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()` in SecurityConfig
+- **useAuth must be a shared React Context** — calling `useAuth()` in multiple components creates independent useState instances; login updates one copy while ProtectedRoute reads another fresh null, bouncing back to /login. AuthProvider in main.tsx is the fix
+- **Axios 401 interceptor must guard auth endpoints** — wrong password on `/api/auth/login` returns 401; the interceptor must check `!isAuthEndpoint && hadToken` before redirecting, otherwise login always fails
+- **remark-gfm plugin required for GFM tables** — react-markdown does not parse pipe tables by default; must add `remarkPlugins={[remarkGfm]}`
+- **Frontend normalizeMarkdown must skip during streaming** — running normalization on partial content (mid-stream) mis-detects separator rows; pass `isStreaming` prop and skip normalization while true
+- **Write tool pads files with null bytes** — files written via the Write tool in this environment contain null byte padding after content. Always strip with `tr -d '\0'` or `truncate -s -1` after any Write/Edit operation that causes TypeScript "Invalid character" errors
 
 ---
 
@@ -282,6 +298,12 @@ Update in two places when models change:
 | Code blocks render as plain text | Missing react-markdown `components` prop | Pass custom `code` renderer with SyntaxHighlighter to `<ReactMarkdown>` |
 | Tabs side by side instead of stacked | radix-nova `data-horizontal:flex-col` doesn't match | Add `className="flex-col"` to `<Tabs>` |
 | Change password 401 | JWT not sent or user not found | Ensure Bearer token is in Authorization header; user must be active |
+| Login spins forever / redirects back | 401 interceptor firing on wrong-password response | Check `api.ts` interceptor guards `!isAuthEndpoint && hadToken` before redirect |
+| Login always redirects to /login after success | useAuth not in shared context | Ensure `<AuthProvider>` wraps the app in `main.tsx`; all components must share one auth instance |
+| SSE stream works but tables collapse to one line | `\n` tokens dropped by SSE protocol | Backend: `objectMapper.writeValueAsString(token)`; Frontend: `JSON.parse(data)` before append |
+| `Access Denied` after SSE stream completes | Tomcat ASYNC dispatcher has no SecurityContext | Add `.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()` to SecurityConfig |
+| TypeScript "Invalid character" on line N | Null byte padding from Write tool | Run `tr -d '\0' < file > file.tmp && cp file.tmp file` or `truncate -s -1 file` |
+| Markdown tables render as raw text | Missing remark-gfm plugin | Add `remarkPlugins={[remarkGfm]}` to ReactMarkdown; install with `npm install remark-gfm` |
 | `No endpoints found` from OpenRouter | Model removed from free tier | Run `test-models.ps1`, update `FREE_MODELS` |
 | `429 rate limited` from OpenRouter | Free tier upstream throttle | Wait 30s, try different model |
 | Gradle build fails `version 69` | Running Gradle on Java 25 | `switch-java-version.bat 21` first |
@@ -295,4 +317,5 @@ Update in two places when models change:
 - [x] Phase 2 — Spring Boot JWT gateway, rate limiting, chat logging
 - [x] Phase 3 — Dockerize Spring Boot (multi-stage Dockerfile)
 - [x] Phase 4 — Admin UI + AI Playground (React + shadcn/ui)
+- [x] Phase 4.5 — SSE streaming, markdown quality, auth context fix, login bug fixes
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline
