@@ -2,7 +2,7 @@
 -- V1__initial_schema.sql
 -- Creates all tables from scratch.
 -- Column types match what Hibernate 6 / MySQL8Dialect generates:
---   boolean  → TINYINT  (no display width — deprecated in MySQL 8.0.17+)
+--   boolean  → BIT(1)   (Hibernate 6 / MySQL8Dialect maps Java boolean to Types#BOOLEAN → BIT)
 --   LocalDateTime with @CreationTimestamp/@UpdateTimestamp → DATETIME(6)
 --   ENUM via @Enumerated(STRING) → VARCHAR(n)
 -- ============================================================
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     email         VARCHAR(150) NOT NULL,
     password_hash VARCHAR(60)  NOT NULL,
     role          VARCHAR(20)  NOT NULL DEFAULT 'USER',
-    active        TINYINT      NOT NULL DEFAULT 1,
+    active        BIT(1)       NOT NULL DEFAULT 1,
     created_at    DATETIME(6)  NOT NULL,
     updated_at    DATETIME(6)  NOT NULL,
     PRIMARY KEY (id),
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS chat_logs (
 CREATE TABLE IF NOT EXISTS model_config (
     id           BIGINT       NOT NULL AUTO_INCREMENT,
     model_id     VARCHAR(150) NOT NULL,
-    enabled      TINYINT      NOT NULL DEFAULT 1,
+    enabled      BIT(1)       NOT NULL DEFAULT 1,
     last_used_at DATETIME(6),
     created_at   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),

@@ -13,7 +13,7 @@ VALUES (
     'admin@openrouter.local',
     '$2a$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.',
     'ADMIN',
-    1,
+    b'1',
     NOW(6),
     NOW(6)
 );

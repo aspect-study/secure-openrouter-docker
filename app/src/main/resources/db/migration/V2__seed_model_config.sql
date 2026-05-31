@@ -33,7 +33,7 @@ INSERT IGNORE INTO model_config (model_id, enabled) VALUES
     ('liquid/lfm-2.5-1.2b-instruct:free',                            TRUE),
     ('moonshotai/kimi-k2.6:free',                                    TRUE),
     ('z-ai/glm-4.5-air:free',                                        TRUE),
-    ('cognitivecomputations/dolphin-mistral-24b-venice-edition:free', TRUE),
+    ('cognitivecomputations/dolphin-mistral-24b-venice-edition:free', b'1'),
     ('nousresearch/hermes-3-llama-3.1-405b:free',                    TRUE),
     ('openrouter/owl-alpha',                                          TRUE),
     ('openrouter/free',                                               TRUE);
