@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,6 +40,20 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", "Validation failed", "fields", fieldErrors));
+    }
+
+    /**
+     * Suppress noise from SSE client disconnects.
+     *
+     * Spring 6 throws AsyncRequestNotUsableException when the client drops a streaming
+     * connection (e.g., the browser navigates away mid-stream). The SseEmitter in
+     * ConversationController already handles this inline via completeWithError().
+     * Without this handler the exception would bubble here and log a spurious 500.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
+        // Client disconnected mid-stream — handled inline by the SseEmitter; nothing to do here.
+        log.debug("SSE client disconnected (AsyncRequestNotUsableException): {}", ex.getMessage());
     }
 
     /**

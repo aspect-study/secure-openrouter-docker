@@ -2,6 +2,7 @@ package com.openrouter.gateway.chat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openrouter.gateway.config.AppProperties;
 import com.openrouter.gateway.config.ModelConfigService;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.function.Consumer;
 
 /**
  * HTTP client that calls the nginx OpenRouter proxy.
@@ -84,6 +86,68 @@ public class OpenRouterClient {
         log.info("Proxy responded in {}ms with status {}", latencyMs, response.statusCode());
 
         return new ProxyResponse(response.statusCode(), response.body(), latencyMs);
+    }
+
+    /**
+     * Streams a chat completion from OpenRouter, delivering raw SSE chunk JSON strings
+     * to the provided consumer as they arrive.
+     *
+     * Injects "stream": true into the request body before forwarding.
+     * Filters SSE lines starting with "data: ", strips the prefix, and stops on "[DONE]".
+     * Each chunk is a raw OpenRouter delta JSON string — caller is responsible for parsing.
+     *
+     * @param requestBody   raw JSON request body (without stream flag)
+     * @param chunkConsumer receives each chunk JSON string; called on the calling thread
+     * @throws Exception on HTTP or I/O failure
+     */
+    public void streamChatCompletion(String requestBody, Consumer<String> chunkConsumer) throws Exception {
+        // Parse request body and inject "stream": true
+        ObjectNode root = (ObjectNode) objectMapper.readTree(requestBody);
+        String model = root.path("model").asText();
+
+        if (!modelConfigService.getEnabledModelIds().contains(model)) {
+            throw new IllegalArgumentException(
+                    "Model '%s' is not allowed or is currently disabled.".formatted(model));
+        }
+
+        root.put("stream", true);
+        String streamRequestBody = objectMapper.writeValueAsString(root);
+
+        log.info("Starting SSE stream for model: {}", model);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(proxyUrl + CHAT_COMPLETIONS_PATH))
+                .timeout(Duration.ofSeconds(120))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(streamRequestBody))
+                .build();
+
+        // ofLines() delivers the response body line-by-line as a Stream<String>,
+        // blocking until each line arrives — ideal for SSE without reactive overhead.
+        HttpResponse<java.util.stream.Stream<String>> response = httpClient.send(
+                request, HttpResponse.BodyHandlers.ofLines());
+
+        if (response.statusCode() >= 400) {
+            // Drain the body to get the error message, then throw
+            String errorBody = response.body().collect(java.util.stream.Collectors.joining("\n"));
+            throw new RuntimeException(
+                    "OpenRouter stream error %d: %s".formatted(response.statusCode(), errorBody));
+        }
+
+        try (java.util.stream.Stream<String> lines = response.body()) {
+            for (String line : (Iterable<String>) lines::iterator) {
+                if (!line.startsWith("data: ")) continue;
+
+                String chunk = line.substring(6).trim();
+                if ("[DONE]".equals(chunk)) break;
+                if (chunk.isEmpty()) continue;
+
+                chunkConsumer.accept(chunk);
+            }
+        }
+
+        log.info("SSE stream completed for model: {}", model);
     }
 
     /**

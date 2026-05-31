@@ -9,21 +9,26 @@ import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Manages persistent chat conversations for the AI Playground.
  *
- * GET    /api/conversations              — list user's conversations
- * POST   /api/conversations              — create new conversation
- * GET    /api/conversations/{id}         — get conversation with messages
- * POST   /api/conversations/{id}/messages — send message (calls OpenRouter)
- * DELETE /api/conversations/{id}         — delete conversation
+ * GET    /api/conversations                      — list user's conversations
+ * POST   /api/conversations                      — create new conversation
+ * GET    /api/conversations/{id}                 — get conversation with messages
+ * POST   /api/conversations/{id}/messages        — send message (blocking, full response)
+ * POST   /api/conversations/{id}/messages/stream — send message (SSE streaming)
+ * DELETE /api/conversations/{id}                 — delete conversation
  */
 @RestController
 @RequestMapping("/api/conversations")
@@ -33,13 +38,16 @@ public class ConversationController {
 
     private final ConversationRepository conversationRepository;
     private final ChatService chatService;
+    private final ConversationService conversationService;
     private final ObjectMapper objectMapper;
 
     public ConversationController(ConversationRepository conversationRepository,
                                    ChatService chatService,
+                                   ConversationService conversationService,
                                    ObjectMapper objectMapper) {
         this.conversationRepository = conversationRepository;
         this.chatService = chatService;
+        this.conversationService = conversationService;
         this.objectMapper = objectMapper;
     }
 
@@ -163,6 +171,139 @@ public class ConversationController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Internal server error"));
         }
+    }
+
+    /**
+     * POST /api/conversations/{id}/messages/stream
+     *
+     * Streams the assistant response as Server-Sent Events (SSE).
+     * The existing /messages endpoint is unchanged — this is an additive endpoint.
+     *
+     * SSE event protocol:
+     *   event: token   data: <plain text token>
+     *   event: done    data: {"messageId":1,"conversationId":1,"title":"...","usage":{...}}
+     *
+     * Rate limit is checked synchronously before spawning the virtual thread so that
+     * a 429 response can be returned before the SSE connection is opened.
+     *
+     * The user message is persisted in ConversationService.streamMessage() before streaming
+     * starts. The assistant message is persisted after the stream completes successfully.
+     * A mid-stream client disconnect leaves the user message in DB but no assistant message —
+     * this is intentional (we don't persist a partial/unknown response).
+     */
+    @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Object streamMessage(
+            @AuthenticationPrincipal String userEmail,
+            @PathVariable Long id,
+            @Valid @RequestBody ConversationDto.MessageRequest req) {
+
+        // Verify conversation exists before opening SSE connection
+        boolean exists = conversationRepository.findByIdAndUserEmail(id, userEmail).isPresent();
+        if (!exists) {
+            return ResponseEntity.notFound().build();
+        }
+
+        SseEmitter emitter = new SseEmitter(120_000L);
+
+        Thread.ofVirtual().start(() -> {
+            StringBuilder assembled = new StringBuilder();
+            long startMs = System.currentTimeMillis();
+
+            // Capture usage from the final SSE chunk (finish_reason=stop includes usage)
+            final int[] promptTokens     = {0};
+            final int[] completionTokens = {0};
+
+            // Model for logging — loaded once stream starts
+            final String[] model = {""};
+
+            try {
+                // Load model for logging (conversation ownership already verified above)
+                model[0] = conversationRepository.findByIdAndUserEmail(id, userEmail)
+                        .map(Conversation::getModel).orElse("unknown");
+
+                conversationService.streamMessage(id, userEmail, req.content(), chunk -> {
+                    try {
+                        JsonNode chunkNode = objectMapper.readTree(chunk);
+
+                        // Extract delta content token
+                        JsonNode choices = chunkNode.path("choices");
+                        if (choices.isArray() && !choices.isEmpty()) {
+                            String token = choices.get(0)
+                                    .path("delta").path("content").asText("");
+
+                            if (!token.isEmpty()) {
+                                assembled.append(token);
+                                emitter.send(SseEmitter.event()
+                                        .name("token")
+                                        .data(token));
+                            }
+
+                            // Capture usage from the final chunk (present when finish_reason=stop)
+                            JsonNode usage = chunkNode.path("usage");
+                            if (!usage.isMissingNode() && !usage.isNull()) {
+                                promptTokens[0]     = usage.path("prompt_tokens").asInt(0);
+                                completionTokens[0] = usage.path("completion_tokens").asInt(0);
+                            }
+                        }
+                    } catch (IOException e) {
+                        // Client disconnected mid-stream — abort the stream
+                        log.warn("SSE client disconnected during stream for conversation {}: {}",
+                                id, e.getMessage());
+                        throw new RuntimeException("SSE send failed (client disconnect)", e);
+                    } catch (Exception e) {
+                        log.warn("Failed to parse stream chunk: {}", e.getMessage());
+                        // Non-fatal: skip malformed chunk and continue
+                    }
+                });
+
+                // Stream completed — persist assistant message and send done event
+                ConversationMessage saved = conversationService.persistAssistantMessage(
+                        id, assembled.toString());
+
+                long latencyMs = System.currentTimeMillis() - startMs;
+                conversationService.logStreamChat(
+                        userEmail, model[0],
+                        promptTokens[0], completionTokens[0],
+                        latencyMs, assembled.toString());
+
+                // Retrieve updated title (may have been auto-set on first message)
+                String title = conversationRepository.findById(id)
+                        .map(Conversation::getTitle).orElse("");
+
+                String donePayload = objectMapper.writeValueAsString(Map.of(
+                        "messageId",      saved.getId() != null ? saved.getId() : 0,
+                        "conversationId", id,
+                        "title",          title,
+                        "usage",          Map.of(
+                                "promptTokens",     promptTokens[0],
+                                "completionTokens", completionTokens[0],
+                                "totalTokens",      promptTokens[0] + completionTokens[0]
+                        )
+                ));
+
+                emitter.send(SseEmitter.event().name("done").data(donePayload));
+                emitter.complete();
+
+            } catch (ConversationService.RateLimitExceededException e) {
+                try {
+                    String payload = objectMapper.writeValueAsString(
+                            Map.of("error", "Rate limit exceeded",
+                                   "remainingTokens", e.getRemainingTokens()));
+                    emitter.send(SseEmitter.event().name("error").data(payload));
+                } catch (Exception ignored) {}
+                emitter.completeWithError(e);
+
+            } catch (NoSuchElementException e) {
+                emitter.completeWithError(e);
+
+            } catch (Exception e) {
+                log.error("SSE stream error for conversation {} user {}: {}",
+                        id, userEmail, e.getMessage(), e);
+                emitter.completeWithError(e);
+            }
+        });
+
+        return emitter;
     }
 
     @DeleteMapping("/{id}")

@@ -18,9 +18,12 @@ import {
 } from 'lucide-react'
 
 interface Model { id: string }
-interface Message { id?: number; role: 'user' | 'assistant'; content: string; createdAt?: string }
+interface Message { id?: number; role: 'user' | 'assistant'; content: string; createdAt?: string; streaming?: boolean }
 interface Conversation { id: number; title: string; model: string; updatedAt: string }
 interface TokenUsage { promptTokens: number; completionTokens: number; totalTokens: number }
+
+// Sentinel id used to identify the in-progress streaming assistant bubble
+const STREAMING_MSG_ID = -999
 
 
 export default function PlaygroundPage() {
@@ -33,6 +36,7 @@ export default function PlaygroundPage() {
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streaming, setStreaming] = useState(false)
   const [lastUsage, setLastUsage] = useState<TokenUsage | null>(null)
   const [changePwOpen, setChangePwOpen] = useState(false)
   const isMobile = useIsMobile()
@@ -115,8 +119,24 @@ export default function PlaygroundPage() {
     }
   }
 
+  /**
+   * Primary send path — uses SSE streaming via fetch + ReadableStream.
+   *
+   * Why fetch instead of EventSource: EventSource only supports GET.
+   * We need POST with a JSON body and an Authorization header (JWT).
+   *
+   * Flow:
+   *   1. Ensure conversation exists (create if needed)
+   *   2. Optimistically render user message
+   *   3. Add empty streaming assistant bubble (id=STREAMING_MSG_ID, streaming=true)
+   *   4. Open fetch stream to /messages/stream
+   *   5. Parse SSE lines manually: split on '\n\n', look for event/data pairs
+   *   6. On 'token': append to the streaming bubble via functional state update
+   *   7. On 'done': replace streaming bubble with the real persisted message + update title/usage
+   *   8. On error/disconnect: remove streaming bubble, restore input, show toast
+   */
   const sendMessage = async () => {
-    if (!input.trim() || loading) return
+    if (!input.trim() || loading || streaming) return
 
     let convId = activeConversation?.id
     if (!convId) {
@@ -132,44 +152,153 @@ export default function PlaygroundPage() {
       }
     }
 
-    const userMessage: Message = { role: 'user', content: input, createdAt: new Date().toISOString() }
-    setMessages(prev => [...prev, userMessage])
+    const userContent = input
+    const userMessage: Message = { role: 'user', content: userContent, createdAt: new Date().toISOString() }
+    // Streaming placeholder — replaced by real message on 'done'
+    const streamingBubble: Message = {
+      id: STREAMING_MSG_ID,
+      role: 'assistant',
+      content: '',
+      createdAt: new Date().toISOString(),
+      streaming: true,
+    }
+
+    setMessages(prev => [...prev, userMessage, streamingBubble])
     setInput('')
-    setLoading(true)
+    setStreaming(true)
+    setLoading(false)
+
+    const token = localStorage.getItem('token') ?? sessionStorage.getItem('token') ?? ''
 
     try {
-      const r = await chatApi.sendMessage(convId, userMessage.content)
-      const { message, title, usage } = r.data
-      if (usage) setLastUsage(usage)
-      setMessages(prev => [...prev, message])
-      if (title) {
-        setActiveConversation(prev => prev ? { ...prev, title } : prev)
-        setConversations(prev => prev.map(c => c.id === convId ? { ...c, title } : c))
-      }
-    } catch (err: unknown) {
-      const errData = (err as { response?: { status?: number; data?: { error?: string; statusCode?: number } } })?.response
-      const status = errData?.status ?? 0
-      const msg = errData?.data?.error ?? 'Failed to send message'
+      const response = await fetch(`/api/conversations/${convId}/messages/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: userContent }),
+      })
 
-      if (status === 429) {
-        toast.error(`Rate limited: ${msg}`, {
-          description: 'Wait a few seconds, then try again or switch to a different model.',
-          duration: 6000,
-        })
-      } else if (status >= 500) {
-        toast.error('Model temporarily unavailable', {
-          description: 'Try switching to a different model via Ctrl+K.',
-          duration: 5000,
-        })
-      } else {
-        toast.error(msg)
+      if (!response.ok || !response.body) {
+        const errBody = await response.text().catch(() => '')
+        let errMsg = 'Failed to send message'
+        try { errMsg = JSON.parse(errBody)?.error ?? errMsg } catch { /* raw text */ }
+
+        if (response.status === 429) {
+          toast.error(`Rate limited: ${errMsg}`, {
+            description: 'Wait a few seconds, then try again or switch to a different model.',
+            duration: 6000,
+          })
+        } else if (response.status === 404) {
+          toast.error('Conversation not found')
+        } else {
+          toast.error(errMsg)
+        }
+        // Remove both optimistic messages, restore input
+        setMessages(prev => prev.slice(0, -2))
+        setInput(userContent)
+        return
       }
-      // Remove the optimistically added user message
-      setMessages(prev => prev.slice(0, -1))
-      // Restore the input so the user doesn't lose their message
-      setInput(userMessage.content)
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // SSE parsing state — we may receive partial chunks from the network
+      let currentEvent = ''
+      let currentData = ''
+
+      const processLine = (line: string) => {
+        if (line.startsWith('event:')) {
+          currentEvent = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          currentData = line.slice(5).trim()
+        } else if (line === '') {
+          // Blank line = end of event block
+          if (currentData) {
+            handleSseEvent(currentEvent, currentData, convId!)
+          }
+          currentEvent = ''
+          currentData = ''
+        }
+      }
+
+      const handleSseEvent = (event: string, data: string, cid: number) => {
+        if (event === 'token') {
+          // Append token to the streaming bubble
+          setMessages(prev => prev.map(m =>
+            m.id === STREAMING_MSG_ID
+              ? { ...m, content: m.content + data }
+              : m
+          ))
+        } else if (event === 'done') {
+          try {
+            const payload = JSON.parse(data)
+            // Replace streaming bubble with the real persisted message
+            const realMessage: Message = {
+              id: payload.messageId,
+              role: 'assistant',
+              // Use the assembled content already in the bubble (avoid a round-trip)
+              content: '', // filled below from current bubble content
+              createdAt: new Date().toISOString(),
+              streaming: false,
+            }
+            setMessages(prev => {
+              const bubble = prev.find(m => m.id === STREAMING_MSG_ID)
+              return prev.map(m =>
+                m.id === STREAMING_MSG_ID
+                  ? { ...realMessage, content: bubble?.content ?? '' }
+                  : m
+              )
+            })
+            if (payload.title) {
+              setActiveConversation(prev => prev ? { ...prev, title: payload.title } : prev)
+              setConversations(prev => prev.map(c =>
+                c.id === cid ? { ...c, title: payload.title } : c
+              ))
+            }
+            if (payload.usage) setLastUsage(payload.usage)
+          } catch {
+            // Malformed done payload — bubble stays with streamed content, that's fine
+          }
+        } else if (event === 'error') {
+          try {
+            const payload = JSON.parse(data)
+            toast.error(payload.error ?? 'Stream error')
+          } catch {
+            toast.error('Stream error')
+          }
+        }
+      }
+
+      // Read stream chunks until done
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete lines
+        const lines = buffer.split('\n')
+        // Keep last (potentially incomplete) line in buffer
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          processLine(line)
+        }
+      }
+
+      // Process any remaining buffered content
+      if (buffer) processLine(buffer)
+
+    } catch (err) {
+      // Network error or stream abort
+      toast.error('Connection lost. Please try again.')
+      setMessages(prev => prev.filter(m => m.id !== STREAMING_MSG_ID).slice(0, -1))
+      setInput(userContent)
     } finally {
-      setLoading(false)
+      setStreaming(false)
       textareaRef.current?.focus()
     }
   }
@@ -372,7 +501,20 @@ export default function PlaygroundPage() {
                     } : {}}>
                       {msg.role === 'user'
                         ? <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                        : <ChatMessage content={msg.content} isDark={dark} />
+                        : msg.streaming && msg.content === ''
+                          /* First-token wait: show typing dots inside the bubble */
+                          ? <div className="flex items-center gap-1.5 py-0.5">
+                              <div className="typing-dot" />
+                              <div className="typing-dot" />
+                              <div className="typing-dot" />
+                            </div>
+                          : <span>
+                              <ChatMessage content={msg.content} isDark={dark} />
+                              {/* Blinking cursor while tokens are arriving */}
+                              {msg.streaming && (
+                                <span className="inline-block w-0.5 h-4 bg-current ml-0.5 align-middle animate-pulse" />
+                              )}
+                            </span>
                       }
                     </div>
                     <div className={cn('flex items-center gap-1', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
@@ -392,7 +534,7 @@ export default function PlaygroundPage() {
                 </div>
               ))}
 
-              {/* Typing indicator */}
+              {/* Typing indicator — shown only while waiting for the first token */}
               {loading && (
                 <div className="flex items-start gap-2">
                   <span className="text-2xl">{modelEmoji(selectedModel)}</span>
@@ -423,7 +565,7 @@ export default function PlaygroundPage() {
                   e.target.style.height = Math.min(e.target.scrollHeight, 240) + 'px'
                 }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'Enter' && !e.shiftKey && !streaming) {
                     e.preventDefault()
                     sendMessage()
                   }
@@ -451,7 +593,7 @@ export default function PlaygroundPage() {
                 </div>
                 <Button
                   onClick={sendMessage}
-                  disabled={loading || !input.trim()}
+                  disabled={loading || streaming || !input.trim()}
                   size="sm"
                   className="h-8 w-8 p-0 rounded-lg"
                 >

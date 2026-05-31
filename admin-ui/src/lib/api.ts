@@ -14,15 +14,21 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Auto-logout on 401
+// Auto-logout on 401 only when there was an active session.
+// Do NOT redirect on 401 from auth endpoints (wrong password is a 401 too).
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const is401 = error.response?.status === 401
+    const isAuthEndpoint = error.config?.url?.includes('/auth/')
+    const hadToken = !!localStorage.getItem('token')
+
+    if (is401 && !isAuthEndpoint && hadToken) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'
     }
+
     return Promise.reject(error)
   }
 )
