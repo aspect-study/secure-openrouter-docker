@@ -3,6 +3,10 @@
 -- Seeds enabled free models into model_config.
 -- INSERT IGNORE: idempotent — re-running is safe.
 --
+-- created_at is intentionally omitted: the column DEFAULT
+-- CURRENT_TIMESTAMP(6) (defined in V1) supplies the value
+-- automatically for raw SQL inserts.
+--
 -- To update models: add/remove rows here AND update
 -- OpenRouterClient.java FREE_MODELS set. Then create a new
 -- migration (V5, V6, ...) — never edit this file retroactively.
