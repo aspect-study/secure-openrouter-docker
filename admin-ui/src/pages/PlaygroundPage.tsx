@@ -213,10 +213,14 @@ export default function PlaygroundPage() {
         if (line.startsWith('event:')) {
           currentEvent = line.slice(6).trim()
         } else if (line.startsWith('data:')) {
-          currentData = line.slice(5).trim()
+          // SSE spec: one optional space after the colon — strip only that leading space,
+          // not all whitespace (trimming would corrupt JSON strings containing \n)
+          currentData = line.slice(5).replace(/^ /, '')
         } else if (line === '') {
           // Blank line = end of event block
-          if (currentData) {
+          // Note: currentData may legitimately be empty string (e.g. JSON "")
+          // so check for currentEvent presence, not currentData truthiness
+          if (currentEvent) {
             handleSseEvent(currentEvent, currentData, convId!)
           }
           currentEvent = ''
@@ -226,10 +230,14 @@ export default function PlaygroundPage() {
 
       const handleSseEvent = (event: string, data: string, cid: number) => {
         if (event === 'token') {
-          // Append token to the streaming bubble
+          // Token data is JSON-encoded so whitespace chars (\n, \t) survive SSE transport.
+          // Raw \n in SSE data: fields is treated as an empty line by the protocol,
+          // silently dropping newlines and collapsing tables/code onto one line.
+          let token = data
+          try { token = JSON.parse(data) } catch { /* fallback to raw data */ }
           setMessages(prev => prev.map(m =>
             m.id === STREAMING_MSG_ID
-              ? { ...m, content: m.content + data }
+              ? { ...m, content: m.content + token }
               : m
           ))
         } else if (event === 'done') {
@@ -720,6 +728,23 @@ export default function PlaygroundPage() {
           })}
         </CommandList>
 
+
+          {/* Footer */}
+          <div className="px-4 py-2 border-t border-border flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              <span className="font-mono bg-muted px-1 rounded">↑↓</span> navigate &nbsp;
+              <span className="font-mono bg-muted px-1 rounded">↵</span> select &nbsp;
+              <span className="font-mono bg-muted px-1 rounded">Esc</span> close
+            </p>
+            <p className="text-xs text-muted-foreground">{models.length} free models</p>
+          </div>
+        </Command>
+      </CommandDialog>
+    </div>
+  )
+}
+          })}
+        </CommandList>
 
           {/* Footer */}
           <div className="px-4 py-2 border-t border-border flex items-center justify-between">

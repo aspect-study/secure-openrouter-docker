@@ -233,9 +233,13 @@ public class ConversationController {
 
                             if (!token.isEmpty()) {
                                 assembled.append(token);
+                                // JSON-encode the token so whitespace characters (\n, \t, etc.)
+                                // survive SSE transport. Raw \n in SSE data: fields is treated
+                                // as an empty line by the protocol, silently dropping newlines
+                                // and collapsing multi-line responses (tables, code) into one line.
                                 emitter.send(SseEmitter.event()
                                         .name("token")
-                                        .data(token));
+                                        .data(objectMapper.writeValueAsString(token)));
                             }
 
                             // Capture usage from the final chunk (present when finish_reason=stop)
