@@ -12,4 +12,6 @@ public interface ModelConfigRepository extends JpaRepository<ModelConfig, Long> 
     Optional<ModelConfig> findByModelId(String modelId);
 
     List<ModelConfig> findAllByOrderByModelIdAsc();
+
+    List<ModelConfig> findByEnabledTrue();
 }

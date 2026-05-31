@@ -4,6 +4,7 @@ import com.openrouter.gateway.auth.User;
 import com.openrouter.gateway.auth.UserRepository;
 import com.openrouter.gateway.config.ModelConfig;
 import com.openrouter.gateway.config.ModelConfigRepository;
+import com.openrouter.gateway.config.ModelConfigService;
 import com.openrouter.gateway.logging.ChatLog;
 import com.openrouter.gateway.logging.ChatLogRepository;
 import jakarta.servlet.http.HttpServletResponse;
@@ -40,13 +41,16 @@ public class AdminController {
     private final ChatLogRepository chatLogRepository;
     private final UserRepository userRepository;
     private final ModelConfigRepository modelConfigRepository;
+    private final ModelConfigService modelConfigService;
 
     public AdminController(ChatLogRepository chatLogRepository,
                            UserRepository userRepository,
-                           ModelConfigRepository modelConfigRepository) {
+                           ModelConfigRepository modelConfigRepository,
+                           ModelConfigService modelConfigService) {
         this.chatLogRepository = chatLogRepository;
         this.userRepository = userRepository;
         this.modelConfigRepository = modelConfigRepository;
+        this.modelConfigService = modelConfigService;
     }
 
     // ── Stats ─────────────────────────────────────────────────────────────
@@ -131,6 +135,8 @@ public class AdminController {
         if (config == null) return ResponseEntity.notFound().build();
         config.setEnabled(!config.isEnabled());
         ModelConfig saved = modelConfigRepository.save(config);
+        // Evict the enabled-models cache so the next request re-reads from DB
+        modelConfigService.evictEnabledModelsCache();
         log.info("Model {} {}", modelId, saved.isEnabled() ? "enabled" : "disabled");
         return ResponseEntity.ok(ModelConfigDto.from(saved));
     }

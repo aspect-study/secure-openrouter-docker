@@ -1,5 +1,6 @@
 package com.openrouter.gateway.chat;
 
+import com.openrouter.gateway.config.ModelConfigService;
 import jakarta.validation.constraints.NotBlank;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,6 +21,9 @@ import java.util.Map;
  *   - Forwards to OpenRouter via nginx proxy
  *   - Rate limited per user (Bucket4j)
  *   - Logs every request to MySQL
+ *
+ * GET /api/chat/models
+ *   - Returns enabled models from model_config table (cached, no hardcoded list)
  */
 @RestController
 @RequestMapping("/api/chat")
@@ -28,9 +33,11 @@ public class ChatController {
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
     private final ChatService chatService;
+    private final ModelConfigService modelConfigService;
 
-    public ChatController(ChatService chatService) {
+    public ChatController(ChatService chatService, ModelConfigService modelConfigService) {
         this.chatService = chatService;
+        this.modelConfigService = modelConfigService;
     }
 
     /**
@@ -67,7 +74,7 @@ public class ChatController {
             };
 
         } catch (IllegalArgumentException e) {
-            // Model not in whitelist
+            // Model not enabled in model_config
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Invalid model", "message", e.getMessage()));
 
@@ -79,37 +86,15 @@ public class ChatController {
     }
 
     /**
-     * Returns the list of allowed free models.
+     * Returns the list of currently enabled free models from model_config.
+     * Backed by the same @Cacheable cache used for validation — no extra DB hit.
      */
     @GetMapping("/models")
     public ResponseEntity<Object> allowedModels() {
-        return ResponseEntity.ok(Map.of(
-                "models", java.util.List.of(
-                        "nvidia/nemotron-nano-9b-v2:free",
-                        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-                        "nvidia/nemotron-3-super-120b-a12b:free",
-                        "nvidia/nemotron-3-nano-30b-a3b:free",
-                        "nvidia/nemotron-nano-12b-v2-vl:free",
-                        "meta-llama/llama-3.3-70b-instruct:free",
-                        "meta-llama/llama-3.2-3b-instruct:free",
-                        "deepseek/deepseek-v4-flash:free",
-                        "qwen/qwen3-coder:free",
-                        "qwen/qwen3-next-80b-a3b-instruct:free",
-                        "google/gemma-4-31b-it:free",
-                        "google/gemma-4-26b-a4b-it:free",
-                        "openai/gpt-oss-120b:free",
-                        "openai/gpt-oss-20b:free",
-                        "poolside/laguna-xs.2:free",
-                        "poolside/laguna-m.1:free",
-                        "liquid/lfm-2.5-1.2b-thinking:free",
-                        "liquid/lfm-2.5-1.2b-instruct:free",
-                        "moonshotai/kimi-k2.6:free",
-                        "z-ai/glm-4.5-air:free",
-                        "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-                        "nousresearch/hermes-3-llama-3.1-405b:free",
-                        "openrouter/owl-alpha",
-                        "openrouter/free"
-                )
-        ));
+        List<String> models = modelConfigService.getEnabledModelIds()
+                .stream()
+                .sorted()
+                .toList();
+        return ResponseEntity.ok(Map.of("models", models));
     }
 }

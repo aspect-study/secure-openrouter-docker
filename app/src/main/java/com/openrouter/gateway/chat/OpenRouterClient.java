@@ -3,6 +3,7 @@ package com.openrouter.gateway.chat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openrouter.gateway.config.AppProperties;
+import com.openrouter.gateway.config.ModelConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,10 @@ import java.time.Duration;
  * no reactive complexity, but high concurrency is maintained.
  *
  * The proxy handles token injection, so we send NO Authorization header here.
+ *
+ * Model validation delegates to ModelConfigService, which reads from the
+ * model_config table (single source of truth). The enabled-model set is
+ * cached in memory and evicted whenever an admin toggles a model.
  */
 @Component
 public class OpenRouterClient {
@@ -28,78 +33,37 @@ public class OpenRouterClient {
     private static final Logger log = LoggerFactory.getLogger(OpenRouterClient.class);
     private static final String CHAT_COMPLETIONS_PATH = "/api/v1/chat/completions";
 
-    // Whitelist of allowed free models — prevents users from requesting paid models.
-    // Verified against OpenRouter API on 2026-05-29 using test-models.ps1.
-    // Excludes: google/lyria-* (paid music models), minimax/minimax-m2.5:free (404).
-    // 429s at test time are transient rate limits — those models are still valid.
-    private static final java.util.Set<String> FREE_MODELS = java.util.Set.of(
-            // NVIDIA
-            "nvidia/nemotron-nano-9b-v2:free",
-            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3-nano-30b-a3b:free",
-            "nvidia/nemotron-nano-12b-v2-vl:free",
-            // Meta
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "meta-llama/llama-3.2-3b-instruct:free",
-            // DeepSeek
-            "deepseek/deepseek-v4-flash:free",
-            // Qwen / Alibaba
-            "qwen/qwen3-coder:free",
-            "qwen/qwen3-next-80b-a3b-instruct:free",
-            // Google
-            "google/gemma-4-31b-it:free",
-            "google/gemma-4-26b-a4b-it:free",
-            // OpenAI OSS
-            "openai/gpt-oss-120b:free",
-            "openai/gpt-oss-20b:free",
-            // Poolside
-            "poolside/laguna-xs.2:free",
-            "poolside/laguna-m.1:free",
-            // Liquid AI
-            "liquid/lfm-2.5-1.2b-thinking:free",
-            "liquid/lfm-2.5-1.2b-instruct:free",
-            // Moonshot
-            "moonshotai/kimi-k2.6:free",
-            // Z-AI
-            "z-ai/glm-4.5-air:free",
-            // Cognitive Computations
-            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-            // NousResearch
-            "nousresearch/hermes-3-llama-3.1-405b:free",
-            // OpenRouter special routers
-            "openrouter/owl-alpha",
-            "openrouter/free"
-    );
-
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final String proxyUrl;
+    private final ModelConfigService modelConfigService;
 
     public OpenRouterClient(HttpClient httpClient,
                              ObjectMapper objectMapper,
-                             AppProperties appProperties) {
+                             AppProperties appProperties,
+                             ModelConfigService modelConfigService) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.proxyUrl = appProperties.getOpenrouter().getProxyUrl();
+        this.modelConfigService = modelConfigService;
     }
 
     /**
-     * Validates the model and forwards the chat request to the nginx proxy.
+     * Validates the model against the DB-driven enabled list, then forwards
+     * the chat request to the nginx proxy.
      *
      * @param requestBody raw JSON string from the client
-     * @return ProxyResponse containing status code, body, and parsed usage
-     * @throws IllegalArgumentException if the model is not in the free whitelist
+     * @return ProxyResponse containing status code, body, and latency
+     * @throws IllegalArgumentException if the model is not enabled in model_config
      */
     public ProxyResponse chat(String requestBody) throws Exception {
         // Parse and validate the model field before forwarding
         JsonNode root = objectMapper.readTree(requestBody);
         String model = root.path("model").asText();
 
-        if (!FREE_MODELS.contains(model)) {
+        if (!modelConfigService.getEnabledModelIds().contains(model)) {
             throw new IllegalArgumentException(
-                    "Model '%s' is not allowed. Permitted free models: %s"
-                            .formatted(model, FREE_MODELS));
+                    "Model '%s' is not allowed or is currently disabled.".formatted(model));
         }
 
         log.info("Forwarding chat request for model: {}", model);
