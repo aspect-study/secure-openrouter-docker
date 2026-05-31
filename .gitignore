@@ -5,6 +5,22 @@
 # Secret — NEVER commit the real .env
 .env
 
+# Gradle build output and cache
+app/build/
+app/.gradle/
+.gradle/
+
+# Vite / React build output
+admin-ui/dist/
+
+# npm dependencies — never commit
+admin-ui/node_modules/
+
+# Compiled Java classes (belt-and-suspenders)
+*.class
+*.jar
+!app/gradle/wrapper/gradle-wrapper.jar
+
 # Nginx logs may contain request data
 logs/
 
