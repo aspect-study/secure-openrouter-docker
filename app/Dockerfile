@@ -8,6 +8,7 @@
 
 # ── Stage 1: Build ───────────────────────────────────────────
 FROM eclipse-temurin:21-jdk-alpine AS builder
+# Gradle 8.14 runtime requires JDK 21. Toolchain auto-provisions JDK 25 for compilation via Foojay resolver.
 
 WORKDIR /build
 

@@ -11,8 +11,7 @@ for /f "usebackq tokens=1,2 delims==" %%i in (`findstr /v "^#" .env`) do (
     if not "%%i"=="" if not "%%j"=="" set %%i=%%j
 )
 
-echo [INFO] Switching to Java 21 for Gradle runtime...
-call switch-java-version.bat 21
+echo [INFO] Gradle 8.14 requires JDK 21 in PATH (runtime constraint - Toolchain handles JDK 25 compilation)
 
 echo [INFO] Starting Spring Boot application...
 cd app

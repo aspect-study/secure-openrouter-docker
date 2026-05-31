@@ -119,7 +119,6 @@ Vite proxies `/api` → `localhost:8080`. Open `http://localhost:3000`.
 ### Build Spring Boot (no tests)
 ```cmd
 cd app
-switch-java-version.bat 21
 gradlew.bat build -x test
 ```
 
@@ -260,7 +259,7 @@ Update in two places when models change:
 - **Never hardcode the OpenRouter API key** — envsubst only, never in image layers
 - **Never expose ports on 0.0.0.0** — all ports bind to `127.0.0.1` only
 - **Gradle wrapper only** — never run `gradle` directly; always use `gradlew.bat`
-- **Gradle runtime must be Java 21** — Gradle 8.14 does not support Java 25 runtime (ADR-004)
+- **Gradle runtime must be Java 21** — Gradle 8.14 does not support Java 25 runtime (ADR-004). Gradle Toolchain auto-provisions JDK 25 for compilation. Gradle 8.14 itself still requires JDK 21 in PATH.
 - **JWT secret must be Base64-encoded and ≥ 256 bits** — JJWT enforces at startup
 - **MySQL port is 3309** — 3306/3307 taken by other local instances
 - **nginx proxy port is 8081** — 8080 used by Spring Boot locally
@@ -306,7 +305,7 @@ Update in two places when models change:
 | Markdown tables render as raw text | Missing remark-gfm plugin | Add `remarkPlugins={[remarkGfm]}` to ReactMarkdown; install with `npm install remark-gfm` |
 | `No endpoints found` from OpenRouter | Model removed from free tier | Run `test-models.ps1`, update `FREE_MODELS` |
 | `429 rate limited` from OpenRouter | Free tier upstream throttle | Wait 30s, try different model |
-| Gradle build fails `version 69` | Running Gradle on Java 25 | `switch-java-version.bat 21` first |
+| Gradle requires JDK 21 in PATH | `./gradlew` fails with wrong Java version | Ensure `JAVA_HOME` or PATH points to JDK 21 — Toolchain handles JDK 25 compilation automatically |
 | `outline-ring/50` CSS error | shadcn radix-nova opacity modifier incompatible | Remove `outline-ring/50` from index.css |
 
 ---
