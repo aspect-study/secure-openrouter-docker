@@ -39,15 +39,18 @@ public class ConversationController {
     private final ConversationRepository conversationRepository;
     private final ChatService chatService;
     private final ConversationService conversationService;
+    private final MarkdownNormalizer markdownNormalizer;
     private final ObjectMapper objectMapper;
 
     public ConversationController(ConversationRepository conversationRepository,
                                    ChatService chatService,
                                    ConversationService conversationService,
+                                   MarkdownNormalizer markdownNormalizer,
                                    ObjectMapper objectMapper) {
         this.conversationRepository = conversationRepository;
         this.chatService = chatService;
         this.conversationService = conversationService;
+        this.markdownNormalizer = markdownNormalizer;
         this.objectMapper = objectMapper;
     }
 
@@ -141,8 +144,8 @@ public class ConversationController {
                                 .body(Map.of("error", errorMsg, "statusCode", s.statusCode()));
                     }
 
-                    // Parse assistant response and persist
-                    String assistantContent = extractContent(s.body());
+                    // Parse assistant response, normalize markdown, then persist
+                    String assistantContent = markdownNormalizer.normalize(extractContent(s.body()));
                     ConversationMessage assistantMsg = new ConversationMessage(
                             conversation, ConversationMessage.Role.assistant, assistantContent);
                     conversation.getMessages().add(assistantMsg);
@@ -260,9 +263,14 @@ public class ConversationController {
                     }
                 });
 
+                // Normalize the assembled response before persisting.
+                // This is the backend's last chance to fix table structure,
+                // missing separator rows, and spacing before the text is stored.
+                String normalizedContent = markdownNormalizer.normalize(assembled.toString());
+
                 // Stream completed — persist assistant message and send done event
                 ConversationMessage saved = conversationService.persistAssistantMessage(
-                        id, assembled.toString());
+                        id, normalizedContent);
 
                 long latencyMs = System.currentTimeMillis() - startMs;
                 conversationService.logStreamChat(
@@ -278,6 +286,7 @@ public class ConversationController {
                         "messageId",      saved.getId() != null ? saved.getId() : 0,
                         "conversationId", id,
                         "title",          title,
+                        "normalizedContent", normalizedContent,
                         "usage",          Map.of(
                                 "promptTokens",     promptTokens[0],
                                 "completionTokens", completionTokens[0],

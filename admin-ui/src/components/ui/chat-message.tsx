@@ -9,63 +9,68 @@ import { useState } from 'react'
 interface ChatMessageProps {
   content: string
   isDark?: boolean
+  // Skip heavy normalization while tokens are still arriving.
+  // The backend sends normalizedContent on the 'done' event, so the final
+  // bubble is always clean. Running normalization on partial content causes
+  // artifacts (e.g. a partial table row being mis-detected as a separator).
+  isStreaming?: boolean
 }
 
 /**
- * Normalizes model-generated markdown tables so remark-gfm can parse them
- * reliably regardless of how much whitespace the model includes.
+ * Normalizes model-generated markdown so remark-gfm parses it correctly.
+ * Only runs on COMPLETE content (isStreaming=false) because partial content
+ * (mid-stream) cannot be safely normalized without introducing artifacts.
  *
- * Problems this fixes:
- *   - No spaces around pipe chars: |Day|Activity| -> | Day | Activity |
- *   - Separator row merged onto header line without newline
- *   - Missing blank line before the table (some parsers require it)
+ * The backend MarkdownNormalizer already handles the heavy lifting for
+ * persisted messages. This function is a lightweight second pass for
+ * any edge cases that appear only in the rendered text.
  */
 function normalizeMarkdown(content: string): string {
-  // Split on actual newlines; models sometimes emit \r\n
   const lines = content.split(/\r?\n/)
   const out: string[] = []
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+  for (const line of lines) {
     const trimmed = line.trim()
-
-    // Detect pipe-table rows (starts and/or ends with |)
-    if (trimmed.startsWith('|') || (trimmed.includes('|') && /^\|?[\s\-|:]+\|?$/.test(trimmed))) {
-      // Split potentially merged header+separator on the same line
-      // e.g. "|A|B|C|---|---|---|" -> two lines
-      const parts = trimmed.split(/(?<=\|)(?=\|?[-:]+[-|: ]*\|)/)
-      for (const part of parts) {
-        const cells = part.split('|')
-        // Normalise each cell: trim whitespace, keep empty boundary cells
-        const normalised = cells.map((c, idx) => {
-          if (idx === 0 && c.trim() === '') return ''
-          if (idx === cells.length - 1 && c.trim() === '') return ''
-          // Separator cell: keep as-is but normalise dashes
-          if (/^[\s\-:]+$/.test(c)) return ' ' + c.trim() + ' '
-          return ' ' + c.trim() + ' '
-        })
-        out.push('|' + normalised.slice(1, -1).join('|') + '|')
-      }
-    } else {
+    if (!trimmed.startsWith('|')) {
       out.push(line)
+      continue
+    }
+
+    // Split cells and check for a mixed row (content + separator cells merged)
+    const cells = trimmed.slice(1, trimmed.endsWith('|') ? -1 : undefined).split('|')
+    const isSep = (c: string) => /^\s*:?-+:?\s*$/.test(c)
+    const hasContent = cells.some(c => !isSep(c) && c.trim() !== '')
+    const hasSep = cells.some(c => isSep(c))
+
+    if (hasContent && hasSep) {
+      // Two-pass split: collect content cells then separator cells
+      const contentCells: string[] = []
+      const sepCells: string[] = []
+      let inSep = false
+      for (const c of cells) {
+        if (!inSep && isSep(c)) inSep = true
+        if (inSep) sepCells.push(c)
+        else contentCells.push(c)
+      }
+      if (contentCells.length > 0) out.push('| ' + contentCells.map(c => c.trim()).join(' | ') + ' |')
+      if (sepCells.length > 0)     out.push('| ' + sepCells.map(() => '---').join(' | ') + ' |')
+    } else {
+      // Normalize spacing around each cell
+      const padded = cells.map(c => isSep(c) ? ' --- ' : ' ' + c.trim() + ' ')
+      out.push('|' + padded.join('|') + '|')
     }
   }
 
-  // Ensure a blank line precedes any table block so remark-gfm sees it
+  // Ensure blank line before each table block
   const result: string[] = []
-  for (let i = 0; i < out.length; i++) {
-    const line = out[i]
-    const prev = result[result.length - 1]
+  for (const line of out) {
     const isTableRow = line.trim().startsWith('|')
-    const prevIsTableRow = prev !== undefined && prev.trim().startsWith('|')
+    const prev = result[result.length - 1]
+    const prevIsTable = prev !== undefined && prev.trim().startsWith('|')
     const prevIsBlank = prev === '' || prev === undefined
-
-    if (isTableRow && !prevIsTableRow && !prevIsBlank) {
-      result.push('')
-    }
+    if (isTableRow && !prevIsTable && !prevIsBlank) result.push('')
     result.push(line)
   }
-
   return result.join('\n')
 }
 
@@ -86,7 +91,8 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
+export function ChatMessage({ content, isDark = false, isStreaming = false }: ChatMessageProps) {
+  const rendered = isStreaming ? content : normalizeMarkdown(content)
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -95,7 +101,6 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
           const match = /language-(\w+)/.exec(className || '')
           const codeString = String(children).replace(/\n$/, '')
           const isBlock = !!match
-
           if (isBlock) {
             return (
               <div className="relative my-3 rounded-xl overflow-hidden border border-border text-sm">
@@ -109,13 +114,7 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
                   style={isDark ? oneDark : oneLight}
                   language={match[1]}
                   PreTag="div"
-                  customStyle={{
-                    margin: 0,
-                    padding: '1rem',
-                    background: 'transparent',
-                    fontSize: '0.8125rem',
-                    lineHeight: '1.6',
-                  }}
+                  customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '0.8125rem', lineHeight: '1.6' }}
                   codeTagProps={{ style: { fontFamily: '"Fira Code", "Cascadia Code", monospace' } }}
                 >
                   {codeString}
@@ -123,37 +122,19 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
               </div>
             )
           }
-
           return (
-            <code
-              className="px-1.5 py-0.5 rounded-md bg-muted text-foreground font-mono text-[0.8em]"
-              {...props}
-            >
+            <code className="px-1.5 py-0.5 rounded-md bg-muted text-foreground font-mono text-[0.8em]" {...props}>
               {children}
             </code>
           )
         },
-        p({ children }) {
-          return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-        },
-        h1({ children }) {
-          return <h1 className="text-lg font-bold mt-4 mb-2 first:mt-0">{children}</h1>
-        },
-        h2({ children }) {
-          return <h2 className="text-base font-semibold mt-3 mb-1.5 first:mt-0">{children}</h2>
-        },
-        h3({ children }) {
-          return <h3 className="text-sm font-semibold mt-3 mb-1 first:mt-0">{children}</h3>
-        },
-        ul({ children }) {
-          return <ul className="list-disc list-outside pl-5 mb-2 space-y-1">{children}</ul>
-        },
-        ol({ children }) {
-          return <ol className="list-decimal list-outside pl-5 mb-2 space-y-1">{children}</ol>
-        },
-        li({ children }) {
-          return <li className="leading-relaxed">{children}</li>
-        },
+        p({ children }) { return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p> },
+        h1({ children }) { return <h1 className="text-lg font-bold mt-4 mb-2 first:mt-0">{children}</h1> },
+        h2({ children }) { return <h2 className="text-base font-semibold mt-3 mb-1.5 first:mt-0">{children}</h2> },
+        h3({ children }) { return <h3 className="text-sm font-semibold mt-3 mb-1 first:mt-0">{children}</h3> },
+        ul({ children }) { return <ul className="list-disc list-outside pl-5 mb-2 space-y-1">{children}</ul> },
+        ol({ children }) { return <ol className="list-decimal list-outside pl-5 mb-2 space-y-1">{children}</ol> },
+        li({ children }) { return <li className="leading-relaxed">{children}</li> },
         blockquote({ children }) {
           return (
             <blockquote className="border-l-2 border-primary/50 pl-3 my-2 text-muted-foreground italic">
@@ -161,24 +142,16 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
             </blockquote>
           )
         },
-        strong({ children }) {
-          return <strong className="font-semibold text-foreground">{children}</strong>
-        },
+        strong({ children }) { return <strong className="font-semibold text-foreground">{children}</strong> },
         a({ href, children }) {
           return (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline underline-offset-2 hover:opacity-80"
-            >
+            <a href={href} target="_blank" rel="noopener noreferrer"
+               className="text-primary underline underline-offset-2 hover:opacity-80">
               {children}
             </a>
           )
         },
-        hr() {
-          return <hr className="my-3 border-border" />
-        },
+        hr() { return <hr className="my-3 border-border" /> },
         table({ children }) {
           return (
             <div className="overflow-x-auto my-3">
@@ -188,15 +161,9 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
             </div>
           )
         },
-        thead({ children }) {
-          return <thead className="bg-muted/60">{children}</thead>
-        },
-        tbody({ children }) {
-          return <tbody className="divide-y divide-border">{children}</tbody>
-        },
-        tr({ children }) {
-          return <tr className="hover:bg-muted/30 transition-colors">{children}</tr>
-        },
+        thead({ children }) { return <thead className="bg-muted/60">{children}</thead> },
+        tbody({ children }) { return <tbody className="divide-y divide-border">{children}</tbody> },
+        tr({ children }) { return <tr className="hover:bg-muted/30 transition-colors">{children}</tr> },
         th({ children }) {
           return (
             <th className="px-3 py-2 font-semibold text-left border border-border text-xs uppercase tracking-wide">
@@ -204,12 +171,10 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
             </th>
           )
         },
-        td({ children }) {
-          return <td className="px-3 py-2 border border-border text-sm">{children}</td>
-        },
+        td({ children }) { return <td className="px-3 py-2 border border-border text-sm">{children}</td> },
       }}
     >
-      {normalizeMarkdown(content)}
+      {rendered}
     </ReactMarkdown>
   )
 }

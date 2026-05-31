@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -98,9 +99,7 @@ public class ConversationService {
         conversationRepository.saveAndFlush(conversation);
 
         // ── 4. Build OpenRouter request (message history for context) ────────
-        List<Map<String, String>> messages = conversation.getMessages().stream()
-                .map(m -> Map.of("role", m.getRole().name(), "content", m.getContent()))
-                .toList();
+        List<Map<String, String>> messages = buildMessages(conversation);
 
         // stream:true is injected inside OpenRouterClient.streamChatCompletion()
         String requestBody = objectMapper.writeValueAsString(Map.of(
@@ -160,6 +159,80 @@ public class ConversationService {
             log.error("Failed to persist stream chat log for user {}: {}", userEmail, e.getMessage());
         }
     }
+
+    // ── Message builder ───────────────────────────────────────────────────────
+
+    /**
+     * Builds the full message list for an OpenRouter request.
+     *
+     * A formatting system prompt is prepended as the first message so every model,
+     * regardless of size or provider, produces clean GFM-compliant markdown.
+     * This is the highest-leverage fix: preventing broken output at the source
+     * rather than post-processing it downstream.
+     *
+     * The system message is injected here (not stored in conversation_messages)
+     * so it never appears in the conversation history shown to the user.
+     */
+    private List<Map<String, String>> buildMessages(Conversation conversation) {
+        List<Map<String, String>> messages = new ArrayList<>();
+
+        // Formatting system prompt — applies to all models
+        messages.add(Map.of(
+                "role", "system",
+                "content", FORMATTING_SYSTEM_PROMPT
+        ));
+
+        // Full conversation history
+        conversation.getMessages().forEach(m ->
+                messages.add(Map.of("role", m.getRole().name(), "content", m.getContent())));
+
+        return messages;
+    }
+
+    /**
+     * Universal markdown formatting rules injected as a system prompt.
+     *
+     * Rules are explicit and example-driven for small models (< 8B) which
+     * require more guidance than larger ones. Larger models respect these rules
+     * with minimal overhead.
+     */
+    private static final String FORMATTING_SYSTEM_PROMPT = """
+            You are a helpful assistant. Always format your responses using clean, \
+            universally compatible Markdown (CommonMark + GFM).
+
+            MARKDOWN RULES — follow these strictly:
+
+            TABLES:
+            - Every table must have: header row | separator row (---) | data rows
+            - Each row on its own line. Space inside every cell: | Cell text |
+            - Separator row example: | --- | --- | --- |
+            - Keep column count identical across all rows
+            - Example:
+              | Day | Activity | Fun Fact |
+              | --- | --- | --- |
+              | 1 | Visit museum | Founded in 1900 |
+
+            LISTS:
+            - Use - for unordered lists, 1. 2. 3. for ordered
+            - One blank line before any list that follows a paragraph
+            - One item per line
+
+            CODE:
+            - Always use fenced code blocks with a language tag: ```python
+            - Inline code uses single backticks: `variable`
+
+            TEXT:
+            - Separate paragraphs with one blank line
+            - Use **bold** and *italic* sparingly for emphasis
+            - Never concatenate words — always space between words
+            - Keep sentences clear and human-readable
+
+            HEADINGS:
+            - Use # ## ### for hierarchy
+            - One blank line before and after each heading
+
+            Do not use HTML tags. Do not use proprietary formatting.
+            """;
 
     // ── Inner exception type ──────────────────────────────────────────────────
 
