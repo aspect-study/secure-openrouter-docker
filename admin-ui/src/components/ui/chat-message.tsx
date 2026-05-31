@@ -11,6 +11,64 @@ interface ChatMessageProps {
   isDark?: boolean
 }
 
+/**
+ * Normalizes model-generated markdown tables so remark-gfm can parse them
+ * reliably regardless of how much whitespace the model includes.
+ *
+ * Problems this fixes:
+ *   - No spaces around pipe chars: |Day|Activity| -> | Day | Activity |
+ *   - Separator row merged onto header line without newline
+ *   - Missing blank line before the table (some parsers require it)
+ */
+function normalizeMarkdown(content: string): string {
+  // Split on actual newlines; models sometimes emit \r\n
+  const lines = content.split(/\r?\n/)
+  const out: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // Detect pipe-table rows (starts and/or ends with |)
+    if (trimmed.startsWith('|') || (trimmed.includes('|') && /^\|?[\s\-|:]+\|?$/.test(trimmed))) {
+      // Split potentially merged header+separator on the same line
+      // e.g. "|A|B|C|---|---|---|" -> two lines
+      const parts = trimmed.split(/(?<=\|)(?=\|?[-:]+[-|: ]*\|)/)
+      for (const part of parts) {
+        const cells = part.split('|')
+        // Normalise each cell: trim whitespace, keep empty boundary cells
+        const normalised = cells.map((c, idx) => {
+          if (idx === 0 && c.trim() === '') return ''
+          if (idx === cells.length - 1 && c.trim() === '') return ''
+          // Separator cell: keep as-is but normalise dashes
+          if (/^[\s\-:]+$/.test(c)) return ' ' + c.trim() + ' '
+          return ' ' + c.trim() + ' '
+        })
+        out.push('|' + normalised.slice(1, -1).join('|') + '|')
+      }
+    } else {
+      out.push(line)
+    }
+  }
+
+  // Ensure a blank line precedes any table block so remark-gfm sees it
+  const result: string[] = []
+  for (let i = 0; i < out.length; i++) {
+    const line = out[i]
+    const prev = result[result.length - 1]
+    const isTableRow = line.trim().startsWith('|')
+    const prevIsTableRow = prev !== undefined && prev.trim().startsWith('|')
+    const prevIsBlank = prev === '' || prev === undefined
+
+    if (isTableRow && !prevIsTableRow && !prevIsBlank) {
+      result.push('')
+    }
+    result.push(line)
+  }
+
+  return result.join('\n')
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
@@ -130,19 +188,28 @@ export function ChatMessage({ content, isDark = false }: ChatMessageProps) {
             </div>
           )
         },
+        thead({ children }) {
+          return <thead className="bg-muted/60">{children}</thead>
+        },
+        tbody({ children }) {
+          return <tbody className="divide-y divide-border">{children}</tbody>
+        },
+        tr({ children }) {
+          return <tr className="hover:bg-muted/30 transition-colors">{children}</tr>
+        },
         th({ children }) {
           return (
-            <th className="px-3 py-2 bg-muted font-semibold text-left border border-border text-xs">
+            <th className="px-3 py-2 font-semibold text-left border border-border text-xs uppercase tracking-wide">
               {children}
             </th>
           )
         },
         td({ children }) {
-          return <td className="px-3 py-2 border border-border">{children}</td>
+          return <td className="px-3 py-2 border border-border text-sm">{children}</td>
         },
       }}
     >
-      {content}
+      {normalizeMarkdown(content)}
     </ReactMarkdown>
   )
 }
