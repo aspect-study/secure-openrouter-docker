@@ -1,7 +1,7 @@
 # PRD-001: Secure OpenRouter Gateway
 
 **Created:** 2026-05-29
-**Author:** aspect (oliver@lapapa88.com)
+**Author:** aspect (aspectjump.java@gmail.com)
 **Status:** Phase 1 ✅ Phase 2 ✅ Phase 3 ✅ Phase 4 ✅ Phase 5 pending
 
 ---
