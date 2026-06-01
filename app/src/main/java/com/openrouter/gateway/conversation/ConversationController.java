@@ -15,6 +15,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +79,7 @@ public class ConversationController {
     }
 
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<ConversationDto.Detail> get(
             @AuthenticationPrincipal String userEmail,
             @PathVariable Long id) {
@@ -86,6 +89,7 @@ public class ConversationController {
     }
 
     @PostMapping("/{id}/messages")
+    @Transactional
     public ResponseEntity<Object> sendMessage(
             @AuthenticationPrincipal String userEmail,
             @PathVariable Long id,
@@ -310,8 +314,25 @@ public class ConversationController {
                 emitter.completeWithError(e);
 
             } catch (Exception e) {
-                log.error("SSE stream error for conversation {} user {}: {}",
-                        id, userEmail, e.getMessage(), e);
+                // 429 from upstream provider (e.g. Google AI Studio rate limit) is operational,
+                // not a server error — send a user-friendly SSE error event and log at WARN.
+                boolean isUpstream429 = e.getMessage() != null
+                        && e.getMessage().contains("stream error 429");
+                if (isUpstream429) {
+                    log.warn("Upstream 429 for conversation {} user {}: {}",
+                            id, userEmail, e.getMessage());
+                } else {
+                    log.error("SSE stream error for conversation {} user {}: {}",
+                            id, userEmail, e.getMessage(), e);
+                }
+                try {
+                    String userMessage = isUpstream429
+                            ? "This model is temporarily rate-limited by the provider. Please wait a moment and try again, or switch to a different model."
+                            : "Stream failed. Please try again.";
+                    String payload = objectMapper.writeValueAsString(
+                            Map.of("error", userMessage, "remainingTokens", 0));
+                    emitter.send(SseEmitter.event().name("error").data(payload));
+                } catch (Exception ignored) {}
                 emitter.completeWithError(e);
             }
         });
