@@ -100,15 +100,15 @@ export default function LoginPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">AspectOR</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              OpenRouter · AI Playground · Admin Dashboard
+              Your private gateway to free LLMs — chat, manage, and monitor from one place.
             </p>
           </div>
         </div>
 
         <Tabs defaultValue="signin" className="flex-col">
           <TabsList className="w-full">
-            <TabsTrigger value="signin" className="flex-1">Sign In</TabsTrigger>
-            <TabsTrigger value="signup" className="flex-1">Sign Up</TabsTrigger>
+            <TabsTrigger value="signin" className="flex-1 data-[state=active]:font-semibold data-[state=active]:text-foreground">Sign In</TabsTrigger>
+            <TabsTrigger value="signup" className="flex-1 data-[state=active]:font-semibold data-[state=active]:text-foreground">Sign Up</TabsTrigger>
           </TabsList>
 
           {/* ── Sign In ─────────────────────────── */}
@@ -243,9 +243,6 @@ export default function LoginPage() {
           </TabsContent>
         </Tabs>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Default admin: <span className="font-mono">admin@openrouter.local</span>
-        </p>
       </div>
     </div>
   )
