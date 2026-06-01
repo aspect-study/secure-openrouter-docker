@@ -82,6 +82,12 @@ export default function AdminLayout() {
               AI Playground
             </div>
           </NavLink>
+          <NavLink to="/settings" onClick={() => setSidebarOpen(false)}>
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-all">
+              <KeyRound className="w-4 h-4 shrink-0" />
+              Settings &amp; API Key
+            </div>
+          </NavLink>
         </div>
       </nav>
 

@@ -3,10 +3,10 @@ import { apiKeyApi, usageApi } from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { CheckCircle2, XCircle, KeyRound, RefreshCw, ArrowLeft, ExternalLink } from 'lucide-react'
+import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
 
 interface ModelUsage {
   modelId: string
@@ -60,7 +60,8 @@ export default function SettingsPage() {
   const [removing, setRemoving] = useState(false)
   const [usage, setUsage] = useState<UsageSummary | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'key' | 'usage'>('key')
+  const [activeTab, setActiveTab] = useState<'key' | 'usage' | 'account'>('key')
+  const [changePwOpen, setChangePwOpen] = useState(false)
 
   // Load key status on mount
   useEffect(() => {
@@ -127,7 +128,7 @@ export default function SettingsPage() {
       <div className="max-w-2xl mx-auto p-6 space-y-6">
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border">
-          {(['key', 'usage'] as const).map(tab => (
+          {(['key', 'usage', 'account'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -137,7 +138,7 @@ export default function SettingsPage() {
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === 'key' ? 'API Key' : 'Usage Dashboard'}
+              {tab === 'key' ? 'API Key' : tab === 'usage' ? 'Usage Dashboard' : 'Account'}
             </button>
           ))}
         </div>
@@ -273,7 +274,24 @@ export default function SettingsPage() {
             ))}
           </div>
         )}
+
+        {/* Tab: Account */}
+        {activeTab === 'account' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Account</CardTitle>
+              <CardDescription>Manage your password and account security.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" onClick={() => setChangePwOpen(true)}>
+                Change Password
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} />
     </div>
   )
 }

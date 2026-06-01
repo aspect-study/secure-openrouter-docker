@@ -1,8 +1,8 @@
 # PRD-002 — Per-User OpenRouter API Key (BYOK)
 
-**Status:** PENDING — not yet implemented  
+**Status:** COMPLETE — fully implemented and live  
 **Created:** 2026-05-31  
-**Updated:** 2026-05-31 — added per-model usage tracking feature  
+**Updated:** 2026-06-01 — implemented all phases (A–G); UI polished post-implementation  
 **Author:** aspect  
 
 ---

@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -38,11 +37,10 @@ public class ApiKeyController {
      */
     @PutMapping
     public ResponseEntity<Map<String, Object>> saveKey(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal String userEmail,
             @RequestBody Map<String, String> body) throws Exception {
 
         String rawKey = body.get("apiKey");
-        String userEmail = userDetails.getUsername();
 
         log.info("API key save request from user: {}", userEmail);
         openRouterKeyService.saveKey(userEmail, rawKey);
@@ -61,9 +59,8 @@ public class ApiKeyController {
      */
     @DeleteMapping
     public ResponseEntity<Map<String, Object>> removeKey(
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal String userEmail) {
 
-        String userEmail = userDetails.getUsername();
         openRouterKeyService.removeKey(userEmail);
         log.info("API key removed for user: {}", userEmail);
 
@@ -81,9 +78,9 @@ public class ApiKeyController {
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Boolean>> keyStatus(
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal String userEmail) {
 
-        boolean configured = openRouterKeyService.isKeyConfigured(userDetails.getUsername());
+        boolean configured = openRouterKeyService.isKeyConfigured(userEmail);
         return ResponseEntity.ok(Map.of("configured", configured));
     }
 }

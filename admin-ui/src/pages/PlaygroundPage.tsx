@@ -44,6 +44,7 @@ export default function PlaygroundPage() {
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
   const [dark, setDark] = useState(isDarkMode)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -53,7 +54,11 @@ export default function PlaygroundPage() {
     chatApi.getModels().then(r => {
       const list: Model[] = r.data.models.map((id: string) => ({ id }))
       setModels(list)
-      if (list.length > 0) setSelectedModel(list[0].id)
+      if (list.length > 0) {
+        const DEFAULT_MODEL = 'nvidia/nemotron-nano-9b-v2:free'
+        const preferred = list.find(m => m.id === DEFAULT_MODEL) ?? list[0]
+        setSelectedModel(preferred.id)
+      }
     })
     chatApi.getConversations().then(r => setConversations(r.data))
     apiKeyApi.getStatus().then(r => setKeyConfigured(r.data.configured)).catch(() => setKeyConfigured(false))
@@ -407,6 +412,20 @@ export default function PlaygroundPage() {
         ))}
       </div>
 
+      {/* Settings nav link */}
+      <div className="px-2 pb-1 shrink-0">
+        <button
+          onClick={() => navigate('/settings')}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <KeyRound className="w-3.5 h-3.5 shrink-0" />
+          <span>Settings &amp; API Key</span>
+          {keyConfigured === false && (
+            <span className="ml-auto w-2 h-2 rounded-full bg-yellow-500 shrink-0" title="API key not configured" />
+          )}
+        </button>
+      </div>
+
       {/* User area */}
       <div className="p-3 border-t border-border space-y-2 shrink-0">
         <p className="text-xs text-muted-foreground truncate px-1">{user?.email}</p>
@@ -671,8 +690,8 @@ export default function PlaygroundPage() {
       {/* Command palette — uses CommandDialog for proper focus trap + keyboard nav */}
       <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} />
 
-      <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
-        <Command>
+      <CommandDialog open={commandOpen} onOpenChange={v => { setCommandOpen(v); if (!v) setModelSearch('') }}>
+        <Command shouldFilter={false}>
           {/* Active model indicator */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50">
             <span className="text-base">{modelEmoji(selectedModel)}</span>
@@ -680,10 +699,19 @@ export default function PlaygroundPage() {
             <span className="text-xs font-medium truncate">{modelDisplayName(selectedModel)}</span>
           </div>
 
-          <CommandInput placeholder="Search free models..." />
+          <CommandInput
+            placeholder="Search free models..."
+            value={modelSearch}
+            onValueChange={setModelSearch}
+          />
 
           <CommandList className="max-h-[220px]">
-          <CommandEmpty>No models found.</CommandEmpty>
+          {modelSearch && !models.some(m =>
+            m.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
+            modelDisplayName(m.id).toLowerCase().includes(modelSearch.toLowerCase())
+          ) && (
+            <p className="py-6 text-center text-sm text-muted-foreground">No models found.</p>
+          )}
 
           {[
             { label: 'NVIDIA', emoji: '🧠', prefix: 'nvidia/' },
@@ -698,9 +726,13 @@ export default function PlaygroundPage() {
             { label: 'Others', emoji: '🤖', prefix: '' },
           ].map(({ label, emoji, prefix }) => {
             const excluded = ['nvidia/', 'meta-llama/', 'google/', 'openai/', 'deepseek/', 'qwen/', 'moonshotai/', 'liquid/', 'poolside/']
-            const group = models.filter(m =>
-              prefix ? m.id.startsWith(prefix) : !excluded.some(p => m.id.startsWith(p))
-            )
+            const q = modelSearch.toLowerCase()
+            const group = models.filter(m => {
+              const inGroup = prefix ? m.id.startsWith(prefix) : !excluded.some(p => m.id.startsWith(p))
+              if (!inGroup) return false
+              if (!q) return true
+              return m.id.toLowerCase().includes(q) || modelDisplayName(m.id).toLowerCase().includes(q)
+            })
             if (group.length === 0) return null
             return (
               <React.Fragment key={label}>
@@ -737,6 +769,7 @@ export default function PlaygroundPage() {
                       className={cn(
                         'cursor-pointer rounded-lg my-0.5 px-3 py-2',
                         'border border-transparent',
+                        'hover:bg-accent active:bg-accent/80',
                         'data-[selected=true]:bg-accent data-[selected=true]:border-border data-[selected=true]:shadow-sm',
                         isActive && 'bg-primary/8'
                       )}

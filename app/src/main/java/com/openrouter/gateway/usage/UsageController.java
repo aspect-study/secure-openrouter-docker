@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -41,9 +40,9 @@ public class UsageController {
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> todayUsage(
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal String userEmail) {
 
-        User user = loadUser(userDetails.getUsername());
+        User user = loadUser(userEmail);
         List<UserModelUsage> rows = usageTrackingService.getUserUsageSummary(user.getId());
 
         int totalRequests = rows.stream().mapToInt(UserModelUsage::getRequestCount).sum();
@@ -74,10 +73,10 @@ public class UsageController {
      */
     @GetMapping("/{modelId}")
     public ResponseEntity<Map<String, Object>> modelUsage(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal String userEmail,
             @PathVariable String modelId) {
 
-        User user = loadUser(userDetails.getUsername());
+        User user = loadUser(userEmail);
         UserModelUsage usage = usageTrackingService.getModelUsage(user.getId(), modelId);
         return ResponseEntity.ok(buildModelRow(user.getId(), usage));
     }
