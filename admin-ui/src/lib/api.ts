@@ -96,3 +96,19 @@ export const usageApi = {
   getTodayUsage: () => api.get('/user/usage'),
   getModelUsage: (modelId: string) => api.get(`/user/usage/${encodeURIComponent(modelId)}`),
 }
+
+// ── User Model Preferences (PRD-003) ──────────────────────────────────────
+// All toggle/status calls use the model_config integer PK (UserModelDto.id).
+// The modelId string is for display only and must NEVER appear in a URL path
+// (model IDs contain forward slashes that Tomcat normalises before Spring MVC
+// sees the request — URL-encoding does not reliably solve this).
+export const userModelApi = {
+  /** GET /api/user/models — full model list with admin + user state for each entry */
+  getModels: () => api.get('/user/models'),
+
+  /** PUT /api/user/models/{id}/toggle — atomically flip the user's preference */
+  toggleModel: (id: number) => api.put(`/user/models/${id}/toggle`),
+
+  /** GET /api/user/models/{id}/status — current preference state for one model */
+  getModelStatus: (id: number) => api.get(`/user/models/${id}/status`),
+}

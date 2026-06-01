@@ -57,6 +57,8 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        // User model preferences — ROLE_USER and ROLE_ADMIN (explicit, matches PRD-003)
+                        .requestMatchers("/api/user/models/**").hasAnyRole("USER", "ADMIN")
                         .anyRequest().authenticated()
                 )
 

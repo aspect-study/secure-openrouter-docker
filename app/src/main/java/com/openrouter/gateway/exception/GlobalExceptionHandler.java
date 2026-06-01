@@ -79,6 +79,26 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Model not found by integer PK — 404.
+     */
+    @ExceptionHandler(ModelNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleModelNotFound(ModelNotFoundException ex) {
+        log.warn("Model not found: id={}", ex.getModelConfigId());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage(), "modelConfigId", ex.getModelConfigId()));
+    }
+
+    /**
+     * User attempted to toggle an admin-disabled model — 400.
+     */
+    @ExceptionHandler(ModelAdminDisabledException.class)
+    public ResponseEntity<Map<String, String>> handleModelAdminDisabled(ModelAdminDisabledException ex) {
+        log.warn("Toggle rejected — admin-disabled model: {}", ex.getModelId());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", ex.getMessage(), "modelId", ex.getModelId()));
+    }
+
+    /**
      * Suppress noise from SSE client disconnects.
      *
      * Spring 6 throws AsyncRequestNotUsableException when the client drops a streaming

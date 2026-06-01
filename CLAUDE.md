@@ -197,6 +197,31 @@ GET  /api/user/usage              — today's per-model usage + global aggregate
 GET  /api/user/usage/{modelId}    — today's usage for a specific model
 ```
 
+### User Model Preferences — PRD-003 (requires JWT — ROLE_USER or ROLE_ADMIN)
+```
+GET    /api/user/models              — full model list with adminEnabled/userEnabled/effectivelyEnabled per entry
+PUT    /api/user/models/{id}/toggle  — atomically flip user preference; {id} = model_config integer PK
+GET    /api/user/models/{id}/status  — single model state; {id} = model_config integer PK
+```
+
+**Why integer PK, not string modelId in path:** Model IDs (e.g., `meta-llama/llama-3.3-70b-instruct:free`)
+contain forward slashes. Tomcat normalises `%2F` before Spring MVC sees the request. Using the
+`model_config.id` integer avoids this entirely. The modelId string is in response bodies only.
+
+**Response shape — `GET /api/user/models`:**
+```json
+{
+  "models": [
+    { "id": 3, "modelId": "meta-llama/...", "name": "Llama 3.3 70B", "adminEnabled": true, "userEnabled": true, "effectivelyEnabled": true }
+  ],
+  "totalAdminEnabled": 12,
+  "totalUserEnabled": 8
+}
+```
+`totalUserEnabled` = effective visible count (admin-enabled ∩ user-enabled); NOT the count of DB rows.
+
+**ROLE_ADMIN bypass:** Admin callers always receive all globally-enabled models regardless of saved preference rows.
+
 ### Admin (requires JWT — ROLE_ADMIN only)
 ```
 GET  /api/admin/stats
@@ -234,6 +259,7 @@ Tables managed by Hibernate `ddl-auto=update` except `model_config` which is see
 - `conversation_messages` — messages per conversation: role (user/assistant), content
 - `model_usage_limits` — V4: admin-controlled daily limits per model; user_id=NULL = global default
 - `user_model_usage` — V4: daily per-user-per-model counters (request_count, token_count, reset_at)
+- `user_model_preferences` — V5: per-user model toggle state (sparse — absence of row = enabled by default)
 
 ---
 
@@ -307,6 +333,20 @@ Update in two places when models change:
 - **remark-gfm plugin required for GFM tables** — react-markdown does not parse pipe tables by default; must add `remarkPlugins={[remarkGfm]}`
 - **Frontend normalizeMarkdown must skip during streaming** — running normalization on partial content (mid-stream) mis-detects separator rows; pass `isStreaming` prop and skip normalization while true
 - **Write tool pads files with null bytes** — files written via the Write tool in this environment contain null byte padding after content. Always strip with `tr -d '\0'` or `truncate -s -1` after any Write/Edit operation that causes TypeScript "Invalid character" errors
+- **PRD-003: Admin gates, user filters** — users can never re-enable an admin-disabled model; `toggleModel` rejects attempts with 400 (`ModelAdminDisabledException`)
+- **PRD-003: ROLE_ADMIN bypasses user preferences** — `getEffectiveModels` short-circuits to full admin-enabled list when caller has ROLE_ADMIN; preference rows for admins are ignored
+- **PRD-003: Absence of preference row = enabled** — `user_model_preferences` is sparse; do not pre-populate rows for every user/model combination
+- **PRD-003: `updated_at` is DB-managed** — `user_model_preferences.updated_at` uses `ON UPDATE CURRENT_TIMESTAMP`; the entity field is `insertable=false, updatable=false` — never set in application code
+- **PRD-003: `userId` from JWT only** — all preference endpoints resolve userId via `@AuthenticationPrincipal String email` → user lookup; no endpoint accepts userId as a path or query parameter
+- **PRD-003: `totalUserEnabled` = effective visible count** — not the count of explicit `enabled=true` DB rows; derived from admin-enabled ∩ user-enabled at query time
+- **PRD-003: Integer PK in path, never string modelId** — model IDs contain forward slashes incompatible with Spring MVC path variables; all toggle/status paths use `model_config.id` (integer)
+- **PRD-003: `toggleModel` uses atomic upsert** — `INSERT ... ON DUPLICATE KEY UPDATE enabled = NOT enabled`; load-or-create is forbidden (race condition: concurrent INSERTs violate unique constraint or last-write-wins produces wrong state)
+- **PRD-003: `/api/chat/models` unchanged** — Playground switches to `/api/user/models`; the admin-facing chat models endpoint is unmodified
+- **PRD-003: Empty-state condition lives in `useEffectiveModels` hook** — `totalUserEnabled === 0` check must not be duplicated across My Models page and Playground; both derive from the same hook
+- **PRD-003: Optimistic UI must revert on failure** — toggle reverts to pre-click state on API error, accompanied by an error toast
+- **PRD-003: No FK on `user_model_preferences.model_id`** — orphaned rows (from removed model_config entries) are harmless; `getEffectiveModels` excludes them via `model_config` JOIN
+- **PRD-003: SecurityConfig rule** — `/api/user/models/**` → `hasAnyRole("USER", "ADMIN")` added before the `anyRequest()` catch-all
+- **PRD-003: Flyway V5** — `user_model_preferences` table; V1–V5 are locked; next schema change is V6
 
 ---
 
@@ -342,6 +382,14 @@ Update in two places when models change:
 | Flyway V4 checksum mismatch | V4 was edited after apply | Never edit V4; create V5+ for changes |
 | `KeyNotConfiguredException` in logs | getKeyForUser called for user with no key | Expected — 409 returned to client; no action needed |
 | Usage not incrementing | Token count 0 from OpenRouter | OpenRouter sometimes omits `usage` in stream; counters stay at 0 for that request |
+| `PUT /api/user/models/{id}/toggle` returns 400 | Model is admin-disabled | Admin must enable the model first; user cannot override admin gate |
+| `PUT /api/user/models/{id}/toggle` returns 404 | Wrong id — must be model_config integer PK, not string modelId | Use `UserModelDto.id` (number) from `GET /api/user/models` response |
+| Playground dropdown empty after toggle | `useEffectiveModels` not refreshed | Toggle refreshes hook state automatically; if stale, call `refresh()` from hook |
+| My Models tab shows no models | `GET /api/user/models` failed or returned empty | Check Spring Boot logs; verify V5 migration applied (`SELECT * FROM flyway_schema_history`) |
+| Flyway V5 checksum mismatch | V5 was edited after apply | Never edit V5; create V6 for schema changes |
+| `SchemaManagementException` on `user_model_preferences.enabled` | Column created as BOOLEAN/TINYINT instead of BIT(1) | Drop DB and re-run with corrected V5 using `BIT(1)` |
+| Toggle optimistic UI doesn't revert | Error toast fires but state sticks | Ensure `setOptimisticOverrides` revert path runs in catch block of `handleToggle` |
+| Admin sees preference rows affecting their model list | Admin bypass not firing | Verify `isAdmin` flag is derived from `user.getRole() == Role.ADMIN` in controller, passed to service |
 
 ---
 
@@ -353,4 +401,5 @@ Update in two places when models change:
 - [x] Phase 4 — Admin UI + AI Playground (React + shadcn/ui)
 - [x] Phase 4.5 — SSE streaming, markdown quality, auth context fix, login bug fixes
 - [x] Phase 4.6 — PRD-002: BYOK (per-user OpenRouter API key), AES-GCM encryption, daily usage tracking, usage limits admin
+- [x] Phase 4.7 — PRD-003: User-level model preferences (My Models tab, Playground scoping, sparse preference table)
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline

@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { apiKeyApi, usageApi } from '@/lib/api'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { CheckCircle2, XCircle, KeyRound, RefreshCw, ArrowLeft, ExternalLink } from 'lucide-react'
 import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
+import MyModelsTab from '@/pages/MyModelsTab'
 
 interface ModelUsage {
   modelId: string
@@ -54,13 +55,17 @@ function ResetCountdown({ resetAt }: { resetAt: string }) {
 
 export default function SettingsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [usage, setUsage] = useState<UsageSummary | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'key' | 'usage' | 'account'>('key')
+  // Honour ?tab= query param so sidebar "My Models" link opens the right tab directly
+  const initialTab = (['key', 'usage', 'models', 'account'] as const)
+    .find(t => t === searchParams.get('tab')) ?? 'key'
+  const [activeTab, setActiveTab] = useState<'key' | 'usage' | 'models' | 'account'>(initialTab)
   const [changePwOpen, setChangePwOpen] = useState(false)
 
   // Load key status on mount
@@ -128,7 +133,7 @@ export default function SettingsPage() {
       <div className="max-w-2xl mx-auto p-6 space-y-6">
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border">
-          {(['key', 'usage', 'account'] as const).map(tab => (
+          {(['key', 'usage', 'models', 'account'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -138,7 +143,10 @@ export default function SettingsPage() {
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === 'key' ? 'API Key' : tab === 'usage' ? 'Usage Dashboard' : 'Account'}
+              {tab === 'key' ? 'API Key'
+                : tab === 'usage' ? 'Usage Dashboard'
+                : tab === 'models' ? 'My Models'
+                : 'Account'}
             </button>
           ))}
         </div>
@@ -274,6 +282,9 @@ export default function SettingsPage() {
             ))}
           </div>
         )}
+
+        {/* Tab: My Models */}
+        {activeTab === 'models' && <MyModelsTab />}
 
         {/* Tab: Account */}
         {activeTab === 'account' && (

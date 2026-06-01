@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { chatApi, apiKeyApi, usageApi } from '@/lib/api'
+import { useEffectiveModels } from '@/hooks/useEffectiveModels'
 import { useAuth } from '@/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -14,10 +15,8 @@ import { useIsMobile } from '@/hooks/useWindowSize'
 import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
 import {
   Send, Plus, Trash2, Menu, X, Copy, KeyRound,
-  Moon, Sun, LogOut, Settings, ChevronRight, Zap, AlertTriangle
+  Moon, Sun, LogOut, Settings, ChevronRight, Zap, AlertTriangle, Sliders
 } from 'lucide-react'
-
-interface Model { id: string }
 interface Message { id?: number; role: 'user' | 'assistant'; content: string; createdAt?: string; streaming?: boolean }
 interface Conversation { id: number; title: string; model: string; updatedAt: string }
 interface TokenUsage { promptTokens: number; completionTokens: number; totalTokens: number }
@@ -29,7 +28,13 @@ const STREAMING_MSG_ID = -999
 export default function PlaygroundPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [models, setModels] = useState<Model[]>([])
+
+  // Model list — user-scoped (PRD-003): uses GET /api/user/models instead of GET /api/chat/models
+  const { models: allUserModels, totalUserEnabled } = useEffectiveModels()
+  // Playground only shows models the user has effectively enabled
+  const models = allUserModels.filter(m => m.effectivelyEnabled)
+  const noModelsEnabled = totalUserEnabled === 0
+
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -49,17 +54,17 @@ export default function PlaygroundPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load models, conversations, and key status
+  // When the effective model list loads, pick a default model if none is selected
   useEffect(() => {
-    chatApi.getModels().then(r => {
-      const list: Model[] = r.data.models.map((id: string) => ({ id }))
-      setModels(list)
-      if (list.length > 0) {
-        const DEFAULT_MODEL = 'nvidia/nemotron-nano-9b-v2:free'
-        const preferred = list.find(m => m.id === DEFAULT_MODEL) ?? list[0]
-        setSelectedModel(preferred.id)
-      }
-    })
+    if (models.length > 0 && !selectedModel) {
+      const DEFAULT_MODEL = 'nvidia/nemotron-nano-9b-v2:free'
+      const preferred = models.find(m => m.modelId === DEFAULT_MODEL) ?? models[0]
+      setSelectedModel(preferred.modelId)
+    }
+  }, [models, selectedModel])
+
+  // Load conversations and key status on mount
+  useEffect(() => {
     chatApi.getConversations().then(r => setConversations(r.data))
     apiKeyApi.getStatus().then(r => setKeyConfigured(r.data.configured)).catch(() => setKeyConfigured(false))
   }, [])
@@ -412,8 +417,8 @@ export default function PlaygroundPage() {
         ))}
       </div>
 
-      {/* Settings nav link */}
-      <div className="px-2 pb-1 shrink-0">
+      {/* Settings nav links */}
+      <div className="px-2 pb-1 shrink-0 space-y-0.5">
         <button
           onClick={() => navigate('/settings')}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -422,6 +427,16 @@ export default function PlaygroundPage() {
           <span>Settings &amp; API Key</span>
           {keyConfigured === false && (
             <span className="ml-auto w-2 h-2 rounded-full bg-yellow-500 shrink-0" title="API key not configured" />
+          )}
+        </button>
+        <button
+          onClick={() => navigate('/settings?tab=models')}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <Sliders className="w-3.5 h-3.5 shrink-0" />
+          <span>My Models</span>
+          {noModelsEnabled && (
+            <span className="ml-auto w-2 h-2 rounded-full bg-yellow-500 shrink-0" title="All models disabled" />
           )}
         </button>
       </div>
@@ -507,6 +522,23 @@ export default function PlaygroundPage() {
             <kbd className="text-[10px] bg-muted px-1 rounded">⌘K</kbd>
           </Button>
         </header>
+
+        {/* All-models-disabled banner — user has disabled every model in My Models */}
+        {noModelsEnabled && (
+          <div className="mx-4 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-sm">
+            <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />
+            <span className="text-foreground flex-1">
+              All models are disabled. Go to{' '}
+              <button
+                onClick={() => navigate('/settings')}
+                className="font-medium text-yellow-600 dark:text-yellow-400 hover:underline"
+              >
+                Settings → My Models
+              </button>
+              {' '}to enable at least one.
+            </span>
+          </div>
+        )}
 
         {/* No-key banner */}
         {keyConfigured === false && (
@@ -661,7 +693,7 @@ export default function PlaygroundPage() {
                 </div>
                 <Button
                   onClick={sendMessage}
-                  disabled={loading || streaming || !input.trim()}
+                  disabled={loading || streaming || !input.trim() || noModelsEnabled}
                   size="sm"
                   className="h-8 w-8 p-0 rounded-lg"
                 >
@@ -707,8 +739,8 @@ export default function PlaygroundPage() {
 
           <CommandList className="max-h-[220px]">
           {modelSearch && !models.some(m =>
-            m.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
-            modelDisplayName(m.id).toLowerCase().includes(modelSearch.toLowerCase())
+            m.modelId.toLowerCase().includes(modelSearch.toLowerCase()) ||
+            modelDisplayName(m.modelId).toLowerCase().includes(modelSearch.toLowerCase())
           ) && (
             <p className="py-6 text-center text-sm text-muted-foreground">No models found.</p>
           )}
@@ -728,10 +760,10 @@ export default function PlaygroundPage() {
             const excluded = ['nvidia/', 'meta-llama/', 'google/', 'openai/', 'deepseek/', 'qwen/', 'moonshotai/', 'liquid/', 'poolside/']
             const q = modelSearch.toLowerCase()
             const group = models.filter(m => {
-              const inGroup = prefix ? m.id.startsWith(prefix) : !excluded.some(p => m.id.startsWith(p))
+              const inGroup = prefix ? m.modelId.startsWith(prefix) : !excluded.some(p => m.modelId.startsWith(p))
               if (!inGroup) return false
               if (!q) return true
-              return m.id.toLowerCase().includes(q) || modelDisplayName(m.id).toLowerCase().includes(q)
+              return m.modelId.toLowerCase().includes(q) || modelDisplayName(m.modelId).toLowerCase().includes(q)
             })
             if (group.length === 0) return null
             return (
@@ -739,13 +771,13 @@ export default function PlaygroundPage() {
               <CommandSeparator />
               <CommandGroup heading={`${emoji} ${label}`}>
                 {group.map(model => {
-                  const isActive = selectedModel === model.id
+                  const isActive = selectedModel === model.modelId
                   return (
                     <CommandItem
                       key={model.id}
-                      value={`${modelDisplayName(model.id)} ${model.id}`}
+                      value={`${modelDisplayName(model.modelId)} ${model.modelId}`}
                       onSelect={async () => {
-                        const newModel = model.id
+                        const newModel = model.modelId
                         setSelectedModel(newModel)
                         setCommandOpen(false)
 
@@ -777,31 +809,31 @@ export default function PlaygroundPage() {
                       <div className="flex-1 min-w-0">
                         {/* Row 1: name + badges */}
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-xs font-medium truncate">{modelDisplayName(model.id)}</p>
+                          <p className="text-xs font-medium truncate">{modelDisplayName(model.modelId)}</p>
                           {isActive && (
                             <span className="text-[10px] font-semibold text-primary bg-primary/15 px-1.5 py-0.5 rounded-full shrink-0">
                               Active
                             </span>
                           )}
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground shrink-0">
-                            {modelCapability(model.id)}
+                            {modelCapability(model.modelId)}
                           </span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                            {modelDescription(model.id).context}
+                            {modelDescription(model.modelId).context}
                           </span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                            {modelDescription(model.id).rpm}
+                            {modelDescription(model.modelId).rpm}
                           </span>
                         </div>
                         {/* Row 2: best use */}
                         <div className="flex items-center gap-1 mt-0.5">
                           <span className="text-[10px] text-emerald-500 shrink-0">✓</span>
-                          <p className="text-[10px] text-muted-foreground truncate">{modelDescription(model.id).use}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{modelDescription(model.modelId).use}</p>
                         </div>
                         {/* Row 3: limitation */}
                         <div className="flex items-center gap-1">
                           <span className="text-[10px] text-amber-500 shrink-0">⚠</span>
-                          <p className="text-[10px] text-muted-foreground/60 truncate">{modelDescription(model.id).limit}</p>
+                          <p className="text-[10px] text-muted-foreground/60 truncate">{modelDescription(model.modelId).limit}</p>
                         </div>
                       </div>
                     </CommandItem>
@@ -821,7 +853,7 @@ export default function PlaygroundPage() {
               <span className="font-mono bg-muted px-1 rounded">↵</span> select &nbsp;
               <span className="font-mono bg-muted px-1 rounded">Esc</span> close
             </p>
-            <p className="text-xs text-muted-foreground">{models.length} free models</p>
+            <p className="text-xs text-muted-foreground">{models.length} available models</p>
           </div>
         </Command>
       </CommandDialog>
