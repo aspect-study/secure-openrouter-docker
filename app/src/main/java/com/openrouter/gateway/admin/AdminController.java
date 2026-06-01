@@ -7,10 +7,6 @@ import com.openrouter.gateway.config.ModelConfigRepository;
 import com.openrouter.gateway.config.ModelConfigService;
 import com.openrouter.gateway.logging.ChatLog;
 import com.openrouter.gateway.logging.ChatLogRepository;
-import com.openrouter.gateway.usage.ModelUsageLimit;
-import com.openrouter.gateway.usage.ModelUsageLimitRepository;
-import com.openrouter.gateway.usage.UserModelUsage;
-import com.openrouter.gateway.usage.UsageTrackingService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,21 +42,15 @@ public class AdminController {
     private final UserRepository userRepository;
     private final ModelConfigRepository modelConfigRepository;
     private final ModelConfigService modelConfigService;
-    private final ModelUsageLimitRepository usageLimitRepository;
-    private final UsageTrackingService usageTrackingService;
 
     public AdminController(ChatLogRepository chatLogRepository,
                            UserRepository userRepository,
                            ModelConfigRepository modelConfigRepository,
-                           ModelConfigService modelConfigService,
-                           ModelUsageLimitRepository usageLimitRepository,
-                           UsageTrackingService usageTrackingService) {
+                           ModelConfigService modelConfigService) {
         this.chatLogRepository = chatLogRepository;
         this.userRepository = userRepository;
         this.modelConfigRepository = modelConfigRepository;
         this.modelConfigService = modelConfigService;
-        this.usageLimitRepository = usageLimitRepository;
-        this.usageTrackingService = usageTrackingService;
     }
 
     // ── Stats ─────────────────────────────────────────────────────────────
@@ -195,88 +185,6 @@ public class AdminController {
                 chatLogRepository.countByUserEmail(saved.getEmail())));
     }
 
-    // ── Usage Limits (Admin) ──────────────────────────────────────────────
-
-    /** GET /api/admin/usage/limits — all global defaults */
-    @GetMapping("/usage/limits")
-    public ResponseEntity<List<UsageLimitDto>> globalLimits() {
-        return ResponseEntity.ok(
-                usageLimitRepository.findByUserIsNull()
-                        .stream().map(UsageLimitDto::from).toList()
-        );
-    }
-
-    /** PUT /api/admin/usage/limits/{modelId} — set/update global default */
-    @PutMapping("/usage/limits/{modelId}")
-    public ResponseEntity<UsageLimitDto> setGlobalLimit(
-            @PathVariable String modelId,
-            @RequestBody Map<String, Integer> body) {
-
-        int maxReq    = body.getOrDefault("maxRequestsPerDay", 50);
-        int maxTokens = body.getOrDefault("maxTokensPerDay", 100_000);
-
-        ModelUsageLimit limit = usageLimitRepository.findByModelIdAndUserIsNull(modelId)
-                .orElseGet(() -> new ModelUsageLimit(modelId, null, maxReq, maxTokens));
-        limit.setMaxRequestsPerDay(maxReq);
-        limit.setMaxTokensPerDay(maxTokens);
-        ModelUsageLimit saved = usageLimitRepository.save(limit);
-        log.info("Global limit set for model {}: {} req / {} tokens", modelId, maxReq, maxTokens);
-        return ResponseEntity.ok(UsageLimitDto.from(saved));
-    }
-
-    /** GET /api/admin/users/{id}/usage/limits — user's overrides */
-    @GetMapping("/users/{id}/usage/limits")
-    public ResponseEntity<List<UsageLimitDto>> userLimits(@PathVariable Long id) {
-        return ResponseEntity.ok(
-                usageLimitRepository.findByUserId(id)
-                        .stream().map(UsageLimitDto::from).toList()
-        );
-    }
-
-    /** PUT /api/admin/users/{id}/usage/limits/{modelId} — set/update user override */
-    @PutMapping("/users/{id}/usage/limits/{modelId}")
-    public ResponseEntity<UsageLimitDto> setUserLimit(
-            @PathVariable Long id,
-            @PathVariable String modelId,
-            @RequestBody Map<String, Integer> body) {
-
-        User user = userRepository.findById(id).orElse(null);
-        if (user == null) return ResponseEntity.notFound().build();
-
-        int maxReq    = body.getOrDefault("maxRequestsPerDay", 50);
-        int maxTokens = body.getOrDefault("maxTokensPerDay", 100_000);
-
-        ModelUsageLimit limit = usageLimitRepository.findByModelIdAndUserId(modelId, id)
-                .orElseGet(() -> new ModelUsageLimit(modelId, user, maxReq, maxTokens));
-        limit.setMaxRequestsPerDay(maxReq);
-        limit.setMaxTokensPerDay(maxTokens);
-        ModelUsageLimit saved = usageLimitRepository.save(limit);
-        log.info("User {} limit set for model {}: {} req / {} tokens", id, modelId, maxReq, maxTokens);
-        return ResponseEntity.ok(UsageLimitDto.from(saved));
-    }
-
-    /** DELETE /api/admin/users/{id}/usage/limits/{modelId} — remove user override */
-    @DeleteMapping("/users/{id}/usage/limits/{modelId}")
-    public ResponseEntity<Void> deleteUserLimit(
-            @PathVariable Long id,
-            @PathVariable String modelId) {
-        usageLimitRepository.deleteByModelIdAndUserId(modelId, id);
-        log.info("User {} limit override removed for model {}", id, modelId);
-        return ResponseEntity.noContent().build();
-    }
-
-    /** GET /api/admin/users/{id}/usage — today's per-model usage for a user */
-    @GetMapping("/users/{id}/usage")
-    public ResponseEntity<List<UserUsageDto>> userUsage(@PathVariable Long id) {
-        List<UserModelUsage> rows = usageTrackingService.getUserUsageSummary(id);
-        List<UserUsageDto> dtos = rows.stream()
-                .map(r -> {
-                    int[] limits = usageTrackingService.resolveLimits(id, r.getModelId());
-                    return UserUsageDto.from(r, limits[0], limits[1]);
-                }).toList();
-        return ResponseEntity.ok(dtos);
-    }
-
     // ── DTOs ──────────────────────────────────────────────────────────────
 
     public record ChatLogDto(Long id, String userEmail, String model,
@@ -310,24 +218,4 @@ public class AdminController {
         }
     }
 
-    public record UsageLimitDto(Long id, String modelId, Long userId,
-                                 int maxRequestsPerDay, int maxTokensPerDay,
-                                 String updatedAt) {
-        public static UsageLimitDto from(ModelUsageLimit l) {
-            return new UsageLimitDto(
-                    l.getId(), l.getModelId(),
-                    l.getUser() != null ? l.getUser().getId() : null,
-                    l.getMaxRequestsPerDay(), l.getMaxTokensPerDay(),
-                    l.getUpdatedAt().toString());
-        }
-    }
-
-    public record UserUsageDto(String modelId, int requestCount, int tokenCount,
-                                int maxRequests, int maxTokens, String resetAt) {
-        public static UserUsageDto from(UserModelUsage r, int maxRequests, int maxTokens) {
-            return new UserUsageDto(
-                    r.getModelId(), r.getRequestCount(), r.getTokenCount(),
-                    maxRequests, maxTokens, r.getResetAt().toString());
-        }
-    }
 }

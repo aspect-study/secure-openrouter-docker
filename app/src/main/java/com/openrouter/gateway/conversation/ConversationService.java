@@ -2,13 +2,11 @@ package com.openrouter.gateway.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openrouter.gateway.apikey.OpenRouterKeyService;
-import com.openrouter.gateway.auth.User;
 import com.openrouter.gateway.auth.UserRepository;
 import com.openrouter.gateway.chat.OpenRouterClient;
 import com.openrouter.gateway.logging.ChatLog;
 import com.openrouter.gateway.logging.ChatLogRepository;
 import com.openrouter.gateway.ratelimit.RateLimitService;
-import com.openrouter.gateway.usage.UsageTrackingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -41,7 +39,6 @@ public class ConversationService {
     private final ChatLogRepository chatLogRepository;
     private final ObjectMapper objectMapper;
     private final OpenRouterKeyService openRouterKeyService;
-    private final UsageTrackingService usageTrackingService;
     private final UserRepository userRepository;
 
     public ConversationService(ConversationRepository conversationRepository,
@@ -50,7 +47,6 @@ public class ConversationService {
                                ChatLogRepository chatLogRepository,
                                ObjectMapper objectMapper,
                                OpenRouterKeyService openRouterKeyService,
-                               UsageTrackingService usageTrackingService,
                                UserRepository userRepository) {
         this.conversationRepository = conversationRepository;
         this.openRouterClient = openRouterClient;
@@ -58,7 +54,6 @@ public class ConversationService {
         this.chatLogRepository = chatLogRepository;
         this.objectMapper = objectMapper;
         this.openRouterKeyService = openRouterKeyService;
-        this.usageTrackingService = usageTrackingService;
         this.userRepository = userRepository;
     }
 
@@ -96,12 +91,8 @@ public class ConversationService {
         }
 
         // ── 2b. Resolve API key (throws KeyNotConfiguredException if not set) ──
+        // Each user has their own OpenRouter key (BYOK) — OpenRouter enforces limits upstream.
         String apiKey = openRouterKeyService.getKeyForUser(userEmail);
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new IllegalStateException("User not found: " + userEmail));
-
-        // ── 2c. Pre-call: check daily request limit ──────────────────────────
-        usageTrackingService.checkRequestLimit(user.getId(), conversation.getModel());
 
         // ── 3. Persist user message ──────────────────────────────────────────
         ConversationMessage userMsg = new ConversationMessage(
@@ -171,16 +162,6 @@ public class ConversationService {
                               long latencyMs, String responsePreview) {
         try {
             int totalTokens = promptTokens + completionTokens;
-
-            // Increment daily usage counters (non-fatal if it fails)
-            userRepository.findByEmail(userEmail).ifPresent(user -> {
-                try {
-                    usageTrackingService.incrementUsage(user.getId(), model, totalTokens);
-                } catch (Exception ue) {
-                    log.warn("Failed to increment usage for user {} model {}: {}",
-                            userEmail, model, ue.getMessage());
-                }
-            });
 
             ChatLog chatLog = ChatLog.of(
                     userEmail, model,

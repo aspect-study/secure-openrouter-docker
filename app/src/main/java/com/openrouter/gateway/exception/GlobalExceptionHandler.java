@@ -12,7 +12,6 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.time.format.DateTimeFormatter;
 
 /**
  * Centralized exception handling for all controllers.
@@ -61,22 +60,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleKeyNotConfigured(KeyNotConfiguredException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", ex.getMessage()));
-    }
-
-    /**
-     * Daily usage limit exceeded — 429 with reset time.
-     */
-    @ExceptionHandler(UsageLimitExceededException.class)
-    public ResponseEntity<Map<String, Object>> handleUsageLimitExceeded(UsageLimitExceededException ex) {
-        log.info("Usage limit exceeded: {} for model {}, resets at {}",
-                ex.getLimitType(), ex.getModelId(), ex.getResetAt());
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .body(Map.of(
-                        "error",     ex.getMessage(),
-                        "limitType", ex.getLimitType(),
-                        "modelId",   ex.getModelId(),
-                        "resetAt",   ex.getResetAt().format(DateTimeFormatter.ISO_DATE_TIME)
-                ));
     }
 
     /**

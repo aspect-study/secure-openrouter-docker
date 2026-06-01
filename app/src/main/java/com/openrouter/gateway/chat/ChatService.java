@@ -2,12 +2,9 @@ package com.openrouter.gateway.chat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openrouter.gateway.apikey.OpenRouterKeyService;
-import com.openrouter.gateway.auth.User;
-import com.openrouter.gateway.auth.UserRepository;
 import com.openrouter.gateway.logging.ChatLog;
 import com.openrouter.gateway.logging.ChatLogRepository;
 import com.openrouter.gateway.ratelimit.RateLimitService;
-import com.openrouter.gateway.usage.UsageTrackingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,13 +12,14 @@ import org.springframework.stereotype.Service;
 /**
  * Orchestrates the chat request flow:
  *   1. Check Bucket4j rate limit
- *   2. Resolve user entity + API key (BYOK)
- *   3. Pre-check daily request limit
- *   4. Forward to OpenRouter via proxy (with user's API key)
- *   5. Parse usage from response
- *   6. Post-call: increment usage counters
- *   7. Persist chat log
- *   8. Return response to controller
+ *   2. Resolve user API key (BYOK)
+ *   3. Forward to OpenRouter via proxy
+ *   4. Parse usage from response
+ *   5. Persist chat log
+ *   6. Return response to controller
+ *
+ * Usage limit enforcement removed — each user authenticates with their own
+ * OpenRouter API key (BYOK). OpenRouter enforces per-key rate limits upstream.
  */
 @Service
 public class ChatService {
@@ -32,23 +30,17 @@ public class ChatService {
     private final RateLimitService rateLimitService;
     private final ChatLogRepository chatLogRepository;
     private final OpenRouterKeyService openRouterKeyService;
-    private final UsageTrackingService usageTrackingService;
-    private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     public ChatService(OpenRouterClient openRouterClient,
                        RateLimitService rateLimitService,
                        ChatLogRepository chatLogRepository,
                        OpenRouterKeyService openRouterKeyService,
-                       UsageTrackingService usageTrackingService,
-                       UserRepository userRepository,
                        ObjectMapper objectMapper) {
         this.openRouterClient = openRouterClient;
         this.rateLimitService = rateLimitService;
         this.chatLogRepository = chatLogRepository;
         this.openRouterKeyService = openRouterKeyService;
-        this.usageTrackingService = usageTrackingService;
-        this.userRepository = userRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -60,37 +52,23 @@ public class ChatService {
      * @return ChatResult containing the proxy response and metadata
      */
     public ChatResult processChat(String userEmail, String requestBody) throws Exception {
-        // ── 1. Rate limit check ──────────────────────────────────────────
+        // ── 1. Rate limit check (Bucket4j in-memory per-minute) ─────────────
         if (!rateLimitService.tryConsume(userEmail)) {
             long remaining = rateLimitService.availableTokens(userEmail);
             return ChatResult.rateLimited(remaining);
         }
 
-        // ── 2. Resolve user + API key (throws KeyNotConfiguredException if not set) ──
+        // ── 2. Resolve API key (throws KeyNotConfiguredException if not set) ──
         String apiKey = openRouterKeyService.getKeyForUser(userEmail);
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new IllegalStateException("User not found: " + userEmail));
-
-        // ── 3. Parse model for usage tracking ────────────────────────────
         String model = extractModel(requestBody);
 
-        // ── 4. Pre-call: check request limit ─────────────────────────────
-        usageTrackingService.checkRequestLimit(user.getId(), model);
-
-        // ── 5. Forward to proxy with user's key ──────────────────────────
+        // ── 3. Forward to proxy with user's own key ──────────────────────────
         OpenRouterClient.ProxyResponse proxyResponse = openRouterClient.chat(requestBody, apiKey);
 
-        // ── 6. Parse usage ────────────────────────────────────────────────
+        // ── 4. Parse usage + persist chat log ────────────────────────────────
         OpenRouterClient.UsageStats usage = openRouterClient.parseUsage(proxyResponse.body());
         String preview = openRouterClient.parseResponsePreview(proxyResponse.body());
 
-        // ── 7. Post-call: increment usage counters ────────────────────────
-        if (proxyResponse.statusCode() < 400) {
-            usageTrackingService.incrementUsage(
-                    user.getId(), model, usage.totalTokens());
-        }
-
-        // ── 8. Persist chat log ───────────────────────────────────────────
         try {
             ChatLog chatLog = ChatLog.of(
                     userEmail, model,
