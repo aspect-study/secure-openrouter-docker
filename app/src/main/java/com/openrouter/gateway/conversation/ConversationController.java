@@ -236,11 +236,18 @@ public class ConversationController {
                     try {
                         JsonNode chunkNode = objectMapper.readTree(chunk);
 
-                        // Extract delta content token
+                        // Extract delta content token.
+                        // Some reasoning models (e.g. nemotron, deepseek-r1) stream their
+                        // thinking in delta.reasoning and may return delta.content only at the
+                        // end or not at all. Fall back to delta.reasoning so the user sees output.
                         JsonNode choices = chunkNode.path("choices");
                         if (choices.isArray() && !choices.isEmpty()) {
-                            String token = choices.get(0)
-                                    .path("delta").path("content").asText("");
+                            JsonNode delta = choices.get(0).path("delta");
+                            String token = delta.path("content").asText("");
+                            if (token.isEmpty()) {
+                                // Reasoning/thinking token fallback
+                                token = delta.path("reasoning").asText("");
+                            }
 
                             if (!token.isEmpty()) {
                                 assembled.append(token);
