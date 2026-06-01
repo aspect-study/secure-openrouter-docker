@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { userModelApi } from '@/lib/api'
 import { useEffectiveModels, UserModelDto } from '@/hooks/useEffectiveModels'
+import { useAuth } from '@/hooks/useAuth'
 import { toast } from 'sonner'
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn, modelEmoji } from '@/lib/utils'
+import { cn, modelEmoji, modelInfo } from '@/lib/utils'
 
 // ── Owner grouping (mirrors ModelManagerPage categorisation) ─────────────────
 const OWNER_GROUPS = [
@@ -48,6 +49,7 @@ function groupModels(models: UserModelDto[]) {
  *   The modelId string is never used in a URL path.
  */
 export default function MyModelsTab() {
+  const { isAdmin } = useAuth()
   const { models, totalAdminEnabled, totalUserEnabled, loading, error, refresh } =
     useEffectiveModels()
 
@@ -146,6 +148,17 @@ export default function MyModelsTab() {
         </p>
       </div>
 
+      {/* Admin notice — toggles are meaningless for admins (server always returns all enabled) */}
+      {isAdmin && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-sm">
+          <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
+          <span className="text-foreground">
+            As an admin, all globally-enabled models are always available to you.
+            Use <strong>Model Manager</strong> to enable or disable models for all users.
+          </span>
+        </div>
+      )}
+
       {/* Filter tabs + refresh */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="inline-flex rounded-lg border border-border bg-muted p-1 gap-1">
@@ -226,6 +239,8 @@ export default function MyModelsTab() {
                   const isToggling = togglingIds.has(model.id)
                   const isAdminDisabled = !model.adminEnabled
 
+                  const info = modelInfo(model.modelId)
+
                   return (
                     <div
                       key={model.id}
@@ -236,22 +251,31 @@ export default function MyModelsTab() {
                     >
                       {/* Model info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {/* Status dot */}
+                        <span
+                          className={cn(
+                            'w-2 h-2 rounded-full shrink-0',
+                            isAdminDisabled ? 'bg-red-500' : 'bg-green-500'
+                          )}
+                          title={isAdminDisabled ? 'Admin Disabled' : 'Admin Enabled'}
+                        />
                         <span className="text-xl shrink-0">{modelEmoji(model.modelId)}</span>
-                        <div className="min-w-0 space-y-0.5">
+                        <div className="min-w-0 space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium truncate">{model.name}</span>
-                            {isAdminDisabled ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                                Admin Disabled
-                              </span>
-                            ) : (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400 shrink-0">
-                                Admin Enabled
-                              </span>
-                            )}
                           </div>
-                          <p className="text-[11px] text-muted-foreground font-mono truncate">
-                            {model.modelId}
+                          {/* Context + RPM badges */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                              {info.context} ctx
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                              {info.rpm}
+                            </span>
+                          </div>
+                          {/* Free usage note */}
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                            Free: {info.freeUsage}
                           </p>
                         </div>
                       </div>
@@ -261,12 +285,12 @@ export default function MyModelsTab() {
                         role="switch"
                         aria-checked={userEnabled}
                         aria-label={`${userEnabled ? 'Disable' : 'Enable'} ${model.name}`}
-                        disabled={isAdminDisabled || isToggling}
+                        disabled={isAdminDisabled || isToggling || isAdmin}
                         onClick={() => handleToggle(model)}
                         className={cn(
                           'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent',
                           'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                          isAdminDisabled || isToggling
+                          isAdminDisabled || isToggling || isAdmin
                             ? 'cursor-not-allowed opacity-60'
                             : 'cursor-pointer',
                           userEnabled ? 'bg-primary' : 'bg-input'
