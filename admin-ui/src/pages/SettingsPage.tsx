@@ -1,57 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
-import { apiKeyApi, usageApi } from '@/lib/api'
+import { useEffect, useState } from 'react'
+import { apiKeyApi } from '@/lib/api'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { CheckCircle2, XCircle, KeyRound, RefreshCw, ArrowLeft, ExternalLink } from 'lucide-react'
+import { CheckCircle2, XCircle, KeyRound, ArrowLeft, ExternalLink } from 'lucide-react'
 import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
 import MyModelsTab from '@/pages/MyModelsTab'
-
-interface ModelUsage {
-  modelId: string
-  requests: number
-  maxRequests: number
-  tokens: number
-  maxTokens: number
-  requestsRemaining: number
-  tokensRemaining: number
-  resetAt: string
-}
-
-interface UsageSummary {
-  date: string
-  resetAt: string
-  globalAggregate: { totalRequests: number; totalTokens: number }
-  models: ModelUsage[]
-}
-
-/** Progress bar: green < 70%, yellow 70–90%, red > 90% */
-function UsageBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0
-  const color = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{value.toLocaleString()} / {max.toLocaleString()}</span>
-        <span>{pct}%</span>
-      </div>
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  )
-}
-
-/** "Resets in X h Y m" from ISO resetAt string */
-function ResetCountdown({ resetAt }: { resetAt: string }) {
-  const ms = new Date(resetAt).getTime() - Date.now()
-  if (ms <= 0) return <span className="text-xs text-muted-foreground">Resets soon</span>
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  return <span className="text-xs text-muted-foreground">Resets in {h}h {m}m</span>
-}
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -60,32 +16,16 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
-  const [usage, setUsage] = useState<UsageSummary | null>(null)
-  const [usageLoading, setUsageLoading] = useState(false)
-  // Honour ?tab= query param so sidebar "My Models" link opens the right tab directly
-  const initialTab = (['key', 'usage', 'models', 'account'] as const)
+  const initialTab = (['key', 'models', 'account'] as const)
     .find(t => t === searchParams.get('tab')) ?? 'key'
-  const [activeTab, setActiveTab] = useState<'key' | 'usage' | 'models' | 'account'>(initialTab)
+  const [activeTab, setActiveTab] = useState<'key' | 'models' | 'account'>(initialTab)
   const [changePwOpen, setChangePwOpen] = useState(false)
 
-  // Load key status on mount
   useEffect(() => {
     apiKeyApi.getStatus()
       .then(r => setConfigured(r.data.configured))
       .catch(() => setConfigured(false))
   }, [])
-
-  const loadUsage = useCallback(() => {
-    setUsageLoading(true)
-    usageApi.getTodayUsage()
-      .then(r => setUsage(r.data))
-      .catch(() => toast.error('Failed to load usage'))
-      .finally(() => setUsageLoading(false))
-  }, [])
-
-  useEffect(() => {
-    if (activeTab === 'usage') loadUsage()
-  }, [activeTab, loadUsage])
 
   const handleSave = async () => {
     if (!apiKey.trim()) return
@@ -126,14 +66,14 @@ export default function SettingsPage() {
         </Button>
         <div>
           <h1 className="text-lg font-semibold">Settings</h1>
-          <p className="text-xs text-muted-foreground">Manage your OpenRouter API key and usage</p>
+          <p className="text-xs text-muted-foreground">Manage your OpenRouter API key and preferences</p>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto p-6 space-y-6">
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border">
-          {(['key', 'usage', 'models', 'account'] as const).map(tab => (
+          {(['key', 'models', 'account'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -143,10 +83,7 @@ export default function SettingsPage() {
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === 'key' ? 'API Key'
-                : tab === 'usage' ? 'Usage Dashboard'
-                : tab === 'models' ? 'My Models'
-                : 'Account'}
+              {tab === 'key' ? 'API Key' : tab === 'models' ? 'My Models' : 'Account'}
             </button>
           ))}
         </div>
@@ -173,7 +110,6 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Status */}
               <div className="flex items-center gap-2">
                 {configured === null ? (
                   <span className="text-sm text-muted-foreground">Checking…</span>
@@ -190,7 +126,6 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              {/* Input */}
               <div className="flex gap-2">
                 <Input
                   type="password"
@@ -206,12 +141,7 @@ export default function SettingsPage() {
               </div>
 
               {configured && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleRemove}
-                  disabled={removing}
-                >
+                <Button variant="destructive" size="sm" onClick={handleRemove} disabled={removing}>
                   {removing ? 'Removing…' : 'Remove Key'}
                 </Button>
               )}
@@ -222,65 +152,6 @@ export default function SettingsPage() {
               </p>
             </CardContent>
           </Card>
-        )}
-
-        {/* Tab: Usage Dashboard */}
-        {activeTab === 'usage' && (
-          <div className="space-y-4">
-            {/* Aggregate card */}
-            {usage && (
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">Today's Usage</span>
-                    <ResetCountdown resetAt={usage.resetAt} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {usage.globalAggregate.totalRequests} requests · {usage.globalAggregate.totalTokens.toLocaleString()} tokens across all models
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Per-Model Breakdown</h2>
-              <Button variant="ghost" size="sm" onClick={loadUsage} disabled={usageLoading}>
-                <RefreshCw className={`w-3 h-3 mr-1 ${usageLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
-
-            {usageLoading && !usage && (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            )}
-
-            {usage && usage.models.length === 0 && (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No requests made today. Limits reset daily at midnight UTC.
-                </CardContent>
-              </Card>
-            )}
-
-            {usage?.models.map(m => (
-              <Card key={m.modelId}>
-                <CardContent className="pt-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono font-medium truncate">{m.modelId}</span>
-                    <ResetCountdown resetAt={m.resetAt} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Requests</p>
-                    <UsageBar value={m.requests} max={m.maxRequests} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Tokens</p>
-                    <UsageBar value={m.tokens} max={m.maxTokens} />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
         )}
 
         {/* Tab: My Models */}
