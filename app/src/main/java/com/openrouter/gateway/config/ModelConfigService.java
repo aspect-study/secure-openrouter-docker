@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -50,5 +51,30 @@ public class ModelConfigService {
     @CacheEvict(value = "enabledModels", allEntries = true)
     public void evictEnabledModelsCache() {
         log.debug("enabledModels cache evicted");
+    }
+
+    /**
+     * Automatically disables a model that OpenRouter reported as unavailable (404).
+     *
+     * Called reactively when the SSE stream receives a 404 from upstream, meaning the
+     * model has been removed from OpenRouter's free tier. Disabling it prevents future
+     * users from attempting to use it and keeps the model list accurate without manual
+     * intervention.
+     *
+     * The cache is evicted so the next request re-reads from DB immediately.
+     * No-op if the model is already disabled or not found in model_config.
+     *
+     * @param modelId the OpenRouter model ID string (e.g. "deepseek/deepseek-v4-flash:free")
+     */
+    @Transactional
+    @CacheEvict(value = "enabledModels", allEntries = true)
+    public void autoDisableRemovedModel(String modelId) {
+        modelConfigRepository.findByModelId(modelId).ifPresent(model -> {
+            if (model.isEnabled()) {
+                model.setEnabled(false);
+                modelConfigRepository.save(model);
+                log.warn("Auto-disabled model '{}' — OpenRouter returned 404 (removed from free tier)", modelId);
+            }
+        });
     }
 }

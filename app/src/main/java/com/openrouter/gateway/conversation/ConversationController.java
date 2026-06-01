@@ -3,6 +3,7 @@ package com.openrouter.gateway.conversation;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openrouter.gateway.chat.ChatService;
+import com.openrouter.gateway.config.ModelConfigService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -43,17 +44,20 @@ public class ConversationController {
     private final ConversationService conversationService;
     private final MarkdownNormalizer markdownNormalizer;
     private final ObjectMapper objectMapper;
+    private final ModelConfigService modelConfigService;
 
     public ConversationController(ConversationRepository conversationRepository,
                                    ChatService chatService,
                                    ConversationService conversationService,
                                    MarkdownNormalizer markdownNormalizer,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper,
+                                   ModelConfigService modelConfigService) {
         this.conversationRepository = conversationRepository;
         this.chatService = chatService;
         this.conversationService = conversationService;
         this.markdownNormalizer = markdownNormalizer;
         this.objectMapper = objectMapper;
+        this.modelConfigService = modelConfigService;
     }
 
     @GetMapping
@@ -318,6 +322,10 @@ public class ConversationController {
                 boolean isUpstream429 = msg.contains("stream error 429");
                 boolean isUpstream404 = msg.contains("stream error 404");
 
+                if (isUpstream404) {
+                    // Auto-disable the model so no other user hits the same 404
+                    modelConfigService.autoDisableRemovedModel(model[0]);
+                }
                 if (isUpstream429 || isUpstream404) {
                     log.warn("Upstream {} for conversation {} user {}: {}",
                             isUpstream429 ? "429" : "404", id, userEmail, msg);
