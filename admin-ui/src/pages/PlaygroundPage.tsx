@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { chatApi, apiKeyApi, usageApi } from '@/lib/api'
+import React, { useEffect, useState, useRef } from 'react'
+import { chatApi, apiKeyApi } from '@/lib/api'
 import { useEffectiveModels } from '@/hooks/useEffectiveModels'
 import { useAuth } from '@/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
@@ -45,7 +45,6 @@ export default function PlaygroundPage() {
   const [lastUsage, setLastUsage] = useState<TokenUsage | null>(null)
   const [changePwOpen, setChangePwOpen] = useState(false)
   const [keyConfigured, setKeyConfigured] = useState<boolean | null>(null)
-  const [modelUsageChip, setModelUsageChip] = useState<{requests: number; maxRequests: number} | null>(null)
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -69,12 +68,6 @@ export default function PlaygroundPage() {
     apiKeyApi.getStatus().then(r => setKeyConfigured(r.data.configured)).catch(() => setKeyConfigured(false))
   }, [])
 
-  // Refresh per-model usage chip after a message completes
-  const refreshModelUsage = useCallback((model: string) => {
-    usageApi.getModelUsage(model)
-      .then(r => setModelUsageChip({ requests: r.data.requests, maxRequests: r.data.maxRequests }))
-      .catch(() => {})
-  }, [])
 
   // Keyboard shortcut for command palette
   useEffect(() => {
@@ -300,8 +293,6 @@ export default function PlaygroundPage() {
               ))
             }
             if (payload.usage) setLastUsage(payload.usage)
-            // Refresh per-model usage chip
-            if (activeConversation?.model) refreshModelUsage(activeConversation.model)
           } catch {
             // Malformed done payload — bubble stays with streamed content, that's fine
           }
@@ -354,7 +345,7 @@ export default function PlaygroundPage() {
 
   const suggestedPrompts = [
     'Explain how neural networks work in simple terms',
-    'Write a Python function to sort a list of dictionaries',
+    'Write a Java method to sort a list of maps by a specific key',
     'What are the key differences between REST and GraphQL?',
     'Help me debug this code...',
   ]
@@ -705,15 +696,6 @@ export default function PlaygroundPage() {
               <p className="text-xs text-muted-foreground">
                 AI can make mistakes. Verify important information.
               </p>
-              {modelUsageChip && (
-                <span className="text-xs text-muted-foreground">
-                  {modelDisplayName(activeConversation?.model ?? selectedModel)}:{' '}
-                  <span className={modelUsageChip.requests / modelUsageChip.maxRequests >= 0.9 ? 'text-red-500' :
-                    modelUsageChip.requests / modelUsageChip.maxRequests >= 0.7 ? 'text-yellow-500' : 'text-green-500'}>
-                    {modelUsageChip.requests}/{modelUsageChip.maxRequests}
-                  </span>{' '}req today
-                </span>
-              )}
             </div>
           </div>
         </div>

@@ -152,11 +152,13 @@ export default function ModelManagerPage() {
               {tab.label}
               <span className={cn(
                 'text-xs px-1.5 py-0.5 rounded-full font-medium min-w-[20px] text-center',
-                filter === tab.key
-                  ? tab.key === 'enabled'  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                  : tab.key === 'disabled' ? 'bg-muted-foreground/20 text-muted-foreground'
-                  :                         'bg-primary/15 text-primary'
-                  : 'bg-transparent text-muted-foreground'
+                filter !== tab.key
+                  ? 'bg-transparent text-muted-foreground'
+                  : tab.key === 'enabled'
+                  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                  : tab.key === 'disabled'
+                  ? 'bg-muted-foreground/20 text-muted-foreground'
+                  : 'bg-primary/15 text-primary'
               )}>
                 {tab.count}
               </span>

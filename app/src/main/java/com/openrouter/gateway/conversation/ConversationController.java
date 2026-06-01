@@ -314,20 +314,22 @@ public class ConversationController {
                 emitter.completeWithError(e);
 
             } catch (Exception e) {
-                // 429 from upstream provider (e.g. Google AI Studio rate limit) is operational,
-                // not a server error — send a user-friendly SSE error event and log at WARN.
-                boolean isUpstream429 = e.getMessage() != null
-                        && e.getMessage().contains("stream error 429");
-                if (isUpstream429) {
-                    log.warn("Upstream 429 for conversation {} user {}: {}",
-                            id, userEmail, e.getMessage());
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                boolean isUpstream429 = msg.contains("stream error 429");
+                boolean isUpstream404 = msg.contains("stream error 404");
+
+                if (isUpstream429 || isUpstream404) {
+                    log.warn("Upstream {} for conversation {} user {}: {}",
+                            isUpstream429 ? "429" : "404", id, userEmail, msg);
                 } else {
                     log.error("SSE stream error for conversation {} user {}: {}",
-                            id, userEmail, e.getMessage(), e);
+                            id, userEmail, msg, e);
                 }
                 try {
                     String userMessage = isUpstream429
-                            ? "This model is temporarily rate-limited by the provider. Please wait a moment and try again, or switch to a different model."
+                            ? "This model is temporarily rate-limited by the provider. Please wait a moment or switch to a different model."
+                            : isUpstream404
+                            ? "This model is no longer available on OpenRouter's free tier. Please switch to a different model."
                             : "Stream failed. Please try again.";
                     String payload = objectMapper.writeValueAsString(
                             Map.of("error", userMessage, "remainingTokens", 0));
