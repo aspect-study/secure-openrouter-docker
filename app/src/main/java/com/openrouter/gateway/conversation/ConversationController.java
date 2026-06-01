@@ -343,7 +343,10 @@ public class ConversationController {
                             Map.of("error", userMessage, "remainingTokens", 0));
                     emitter.send(SseEmitter.event().name("error").data(payload));
                 } catch (Exception ignored) {}
-                emitter.completeWithError(e);
+                // Use complete() not completeWithError() — the client already received the
+                // event:error SSE. completeWithError() re-dispatches the exception through
+                // Tomcat's async error path and hits GlobalExceptionHandler unnecessarily.
+                emitter.complete();
             }
         });
 

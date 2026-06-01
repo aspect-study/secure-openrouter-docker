@@ -349,6 +349,7 @@ Update in two places when models change:
 - **PRD-003: Flyway V5** — `user_model_preferences` table; V1–V5 are locked; next schema change is V6
 - **@Transactional required on any controller method accessing lazy collections** — Spring closes the Hibernate session after each repository call. Any method that calls `entity.getLazyCollection()` after loading via a repository must be `@Transactional` (readOnly for GETs, default for writes). Missing this causes `LazyInitializationException`.
 - **AuthorizationDeniedException must have a dedicated handler** — `AuthProvider` probes `/api/admin/stats` after every login to detect admin status; regular users always get 403. Without a specific handler it falls through to the catch-all and logs at ERROR. Handler returns 403 at DEBUG level — no stack trace.
+- **Upstream 404 in SSE auto-disables the model** — `ModelConfigService.autoDisableRemovedModel()` is called when SSE catches `"stream error 404"`; sets `enabled = false` in DB, evicts cache, logs at WARN. No manual Flyway migration needed.
 - **Upstream 429 in SSE must send error event before completeWithError()** — generic catch calling `completeWithError()` directly gives the client no feedback. Always send `event: error` first. Detect upstream 429 by `e.getMessage().contains("stream error 429")` and log at WARN, not ERROR.
 - **My Models and Model Manager share the same OWNER_GROUPS categorisation** — both group by owner (NVIDIA, Meta, Google, etc.) with emoji headers and All/Enabled/Disabled filter tabs. If a new provider is added, update `OWNER_GROUPS` in both `ModelManagerPage.tsx` and `MyModelsTab.tsx`.
 
@@ -410,4 +411,6 @@ Update in two places when models change:
 - [x] Phase 4.5 — SSE streaming, markdown quality, auth context fix, login bug fixes
 - [x] Phase 4.6 — PRD-002: BYOK (per-user OpenRouter API key), AES-GCM encryption, daily usage tracking, usage limits admin
 - [x] Phase 4.7 — PRD-003: User-level model preferences (My Models tab, Playground scoping, sparse preference table)
+- [x] Phase 4.8 — Model lifecycle: 404 auto-disable removed models, V6 migration, upstream error UX (429/404)
+- [ ] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + admin on-demand) — PENDING
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline

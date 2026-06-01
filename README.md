@@ -301,6 +301,8 @@ secure-openrouter-docker/
 - [x] Phase 4.5 — SSE streaming, markdown quality, auth context fix, login bug fixes
 - [x] Phase 4.6 — BYOK per-user API key (AES-GCM), daily usage tracking, usage limits admin
 - [x] Phase 4.7 — User-level model preferences (My Models tab, Playground scoping)
+- [x] Phase 4.8 — Model lifecycle: 404 auto-disable, upstream error UX (429/404), V6 migration
+- [ ] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (pending)
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline
 
 ---
