@@ -304,3 +304,60 @@ and restart the app — Flyway re-applies all migrations from scratch against a 
 **Rule for production:** Never edit applied migrations. Add a new `V4__...sql` migration to
 correct any issue. Editing V1–V3 is only acceptable in early development before the first
 shared deployment, and requires all developers to reset their local DBs.
+
+---
+
+## 20. "No static resource" error means the controller was never registered
+
+**What happened:** After writing a new `@RestController`, hitting the endpoint returned
+`NoResourceFoundException: No static resource api/user/models` logged as an unhandled
+exception in `GlobalExceptionHandler`. The class existed in the right package, annotations
+looked correct, no obvious errors.
+
+**Why:** Spring Boot was not restarted after the new files were written. The running JVM
+had no knowledge of the new controller class — it never compiled or loaded it. Spring MVC
+found no handler for the request, fell through to the static resource resolver, which also
+found nothing, throwing `NoResourceFoundException`.
+
+The `GlobalExceptionHandler` being present confirmed the app context had started — so the
+controller's absence pointed to either: (a) app not restarted, or (b) bean creation failure
+at startup that prevented the controller from registering.
+
+**Diagnosis checklist:**
+1. Was Spring Boot restarted after the new files were written? (`run-app.bat` in a fresh terminal)
+2. Check startup logs for `BeanCreationException`, `FlywayException`, or `SchemaManagementException`
+3. Verify the new Flyway migration applied: `SELECT * FROM flyway_schema_history ORDER BY installed_rank DESC`
+4. Check the controller's package is a sub-package of the `@SpringBootApplication` class
+
+**Fix:** Stop `run-app.bat` (Ctrl+C), restart it. The new controller registers on the
+next full application startup.
+
+**Rule:** `gradlew.bat bootRun` (without DevTools hot-reload) requires a full restart to
+pick up new classes. Never assume a running app has the latest code unless it was started
+after the code was written.
+
+---
+
+## 21. Tomcat normalises `%2F` before Spring MVC — use integer PKs for slashed resource IDs
+
+**What happened:** Model IDs (e.g., `meta-llama/llama-3.3-70b-instruct:free`) contain
+forward slashes. URL-encoding them as `%2F` and using them as path variables appeared to
+work in tests but failed in production because Tomcat normalises `%2F` → `/` before any
+Spring filter or controller sees the request. Spring MVC then tried to match
+`/api/user/models/meta-llama/llama-3.3-70b-instruct:free/toggle` against registered routes
+and found nothing.
+
+**Why:** This is a Tomcat connector behaviour, not a Spring MVC issue. The only workaround
+(`ALLOW_ENCODED_SLASH=true`) is a known path-traversal attack vector that Spring Security
+warns against. It cannot be safely enabled.
+
+**Fix:** Use the `model_config` integer primary key as the path variable instead of the
+string model ID. The frontend reads the integer `id` from the list response and uses it
+for toggle/status calls. The string `modelId` is returned in response bodies for display
+only — it never appears in a URL path segment.
+
+**Rule:** Any resource identified by a string that could contain `/`, `:`, `?`, `#`, or
+other URL-special characters must use a surrogate integer key in path variables. This is
+not negotiable — URL encoding cannot reliably solve it at the Tomcat level.
+
+**See:** ADR-015
