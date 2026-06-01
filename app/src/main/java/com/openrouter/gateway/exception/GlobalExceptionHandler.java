@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.util.Map;
@@ -96,6 +97,20 @@ public class GlobalExceptionHandler {
         log.warn("Toggle rejected — admin-disabled model: {}", ex.getModelId());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", ex.getMessage(), "modelId", ex.getModelId()));
+    }
+
+    /**
+     * 403 for callers hitting admin endpoints without ROLE_ADMIN.
+     *
+     * AuthProvider probes /api/admin/stats after every login to detect admin status.
+     * Regular users always get 403 here — this is expected, not an error.
+     * Logged at DEBUG to avoid noise in production logs.
+     */
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied(AuthorizationDeniedException ex) {
+        log.debug("Access denied (expected for non-admin probe): {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", "Access denied"));
     }
 
     /**
