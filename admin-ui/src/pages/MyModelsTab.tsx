@@ -4,7 +4,33 @@ import { useEffectiveModels, UserModelDto } from '@/hooks/useEffectiveModels'
 import { toast } from 'sonner'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, modelEmoji } from '@/lib/utils'
+
+// ── Owner grouping (mirrors ModelManagerPage categorisation) ─────────────────
+const OWNER_GROUPS = [
+  { label: 'NVIDIA',    emoji: '🧠', prefix: 'nvidia/' },
+  { label: 'Meta',      emoji: '🦙', prefix: 'meta-llama/' },
+  { label: 'Google',    emoji: '💎', prefix: 'google/' },
+  { label: 'OpenAI',    emoji: '⚡', prefix: 'openai/' },
+  { label: 'DeepSeek',  emoji: '🌊', prefix: 'deepseek/' },
+  { label: 'Qwen',      emoji: '🔮', prefix: 'qwen/' },
+  { label: 'Moonshot',  emoji: '🌙', prefix: 'moonshotai/' },
+  { label: 'Liquid AI', emoji: '💧', prefix: 'liquid/' },
+  { label: 'Poolside',  emoji: '🏊', prefix: 'poolside/' },
+  { label: 'Others',    emoji: '🤖', prefix: '' },
+]
+const KNOWN_PREFIXES = OWNER_GROUPS.filter(g => g.prefix).map(g => g.prefix)
+
+function groupModels(models: UserModelDto[]) {
+  return OWNER_GROUPS.map(owner => ({
+    ...owner,
+    models: models.filter(m =>
+      owner.prefix
+        ? m.modelId.startsWith(owner.prefix)
+        : !KNOWN_PREFIXES.some(p => m.modelId.startsWith(p))
+    ),
+  })).filter(g => g.models.length > 0)
+}
 
 /**
  * My Models tab — lets users enable/disable individual models from their Playground.
@@ -129,73 +155,90 @@ export default function MyModelsTab() {
         </div>
       )}
 
-      {/* Model list */}
-      <div className="space-y-2">
-        {models.map(model => {
-          const { userEnabled } = getDisplayState(model)
-          const isToggling = togglingIds.has(model.id)
-          const isAdminDisabled = !model.adminEnabled
-
-          return (
-            <div
-              key={model.id}
-              className={cn(
-                'flex items-center justify-between px-4 py-3 rounded-xl border border-border bg-card transition-opacity',
-                isAdminDisabled && 'opacity-50'
-              )}
-            >
-              {/* Model info */}
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium truncate">{model.name}</span>
-                  {isAdminDisabled ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                      Admin Disabled
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400 shrink-0">
-                      Admin Enabled
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground font-mono truncate">
-                  {model.modelId}
-                </p>
+      {/* Model list — grouped by owner */}
+      {models.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          No models configured. Contact your admin.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {groupModels(models).map(group => (
+            <div key={group.label}>
+              {/* Owner section header */}
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <span className="text-base">{group.emoji}</span>
+                <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
+                <span className="text-xs text-muted-foreground">({group.models.length})</span>
+                <div className="flex-1 h-px bg-border ml-1" />
               </div>
 
-              {/* Toggle switch */}
-              <button
-                role="switch"
-                aria-checked={userEnabled}
-                aria-label={`${userEnabled ? 'Disable' : 'Enable'} ${model.name}`}
-                disabled={isAdminDisabled || isToggling}
-                onClick={() => handleToggle(model)}
-                className={cn(
-                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent',
-                  'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                  isAdminDisabled || isToggling
-                    ? 'cursor-not-allowed opacity-60'
-                    : 'cursor-pointer',
-                  userEnabled ? 'bg-primary' : 'bg-input'
-                )}
-              >
-                <span
-                  className={cn(
-                    'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
-                    userEnabled ? 'translate-x-4' : 'translate-x-0'
-                  )}
-                />
-              </button>
-            </div>
-          )
-        })}
+              <div className="space-y-2">
+                {group.models.map(model => {
+                  const { userEnabled } = getDisplayState(model)
+                  const isToggling = togglingIds.has(model.id)
+                  const isAdminDisabled = !model.adminEnabled
 
-        {models.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No models configured. Contact your admin.
-          </p>
-        )}
-      </div>
+                  return (
+                    <div
+                      key={model.id}
+                      className={cn(
+                        'flex items-center justify-between px-4 py-3 rounded-xl border border-border bg-card transition-opacity',
+                        isAdminDisabled && 'opacity-50'
+                      )}
+                    >
+                      {/* Model info */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className="text-xl shrink-0">{modelEmoji(model.modelId)}</span>
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium truncate">{model.name}</span>
+                            {isAdminDisabled ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+                                Admin Disabled
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400 shrink-0">
+                                Admin Enabled
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground font-mono truncate">
+                            {model.modelId}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Toggle switch */}
+                      <button
+                        role="switch"
+                        aria-checked={userEnabled}
+                        aria-label={`${userEnabled ? 'Disable' : 'Enable'} ${model.name}`}
+                        disabled={isAdminDisabled || isToggling}
+                        onClick={() => handleToggle(model)}
+                        className={cn(
+                          'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent',
+                          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          isAdminDisabled || isToggling
+                            ? 'cursor-not-allowed opacity-60'
+                            : 'cursor-pointer',
+                          userEnabled ? 'bg-primary' : 'bg-input'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                            userEnabled ? 'translate-x-4' : 'translate-x-0'
+                          )}
+                        />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
