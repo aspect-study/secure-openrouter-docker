@@ -52,13 +52,14 @@ public class OpenRouterClient {
 
     /**
      * Validates the model against the DB-driven enabled list, then forwards
-     * the chat request to the nginx proxy.
+     * the chat request to the nginx proxy with the user's own API key.
      *
      * @param requestBody raw JSON string from the client
+     * @param apiKey      user's plaintext OpenRouter API key (decrypted by OpenRouterKeyService)
      * @return ProxyResponse containing status code, body, and latency
      * @throws IllegalArgumentException if the model is not enabled in model_config
      */
-    public ProxyResponse chat(String requestBody) throws Exception {
+    public ProxyResponse chat(String requestBody, String apiKey) throws Exception {
         // Parse and validate the model field before forwarding
         JsonNode root = objectMapper.readTree(requestBody);
         String model = root.path("model").asText();
@@ -76,6 +77,7 @@ public class OpenRouterClient {
                 .uri(URI.create(proxyUrl + CHAT_COMPLETIONS_PATH))
                 .timeout(Duration.ofSeconds(60))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 
@@ -89,18 +91,19 @@ public class OpenRouterClient {
     }
 
     /**
-     * Streams a chat completion from OpenRouter, delivering raw SSE chunk JSON strings
-     * to the provided consumer as they arrive.
+     * Streams a chat completion from OpenRouter with the user's own API key.
      *
      * Injects "stream": true into the request body before forwarding.
      * Filters SSE lines starting with "data: ", strips the prefix, and stops on "[DONE]".
      * Each chunk is a raw OpenRouter delta JSON string — caller is responsible for parsing.
      *
      * @param requestBody   raw JSON request body (without stream flag)
+     * @param apiKey        user's plaintext OpenRouter API key
      * @param chunkConsumer receives each chunk JSON string; called on the calling thread
      * @throws Exception on HTTP or I/O failure
      */
-    public void streamChatCompletion(String requestBody, Consumer<String> chunkConsumer) throws Exception {
+    public void streamChatCompletion(String requestBody, String apiKey,
+                                     Consumer<String> chunkConsumer) throws Exception {
         // Parse request body and inject "stream": true
         ObjectNode root = (ObjectNode) objectMapper.readTree(requestBody);
         String model = root.path("model").asText();
@@ -120,6 +123,7 @@ public class OpenRouterClient {
                 .timeout(Duration.ofSeconds(120))
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
+                .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(streamRequestBody))
                 .build();
 

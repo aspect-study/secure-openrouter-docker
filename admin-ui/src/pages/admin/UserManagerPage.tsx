@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 
 interface User {
   id: number; email: string; role: string
-  active: boolean; totalRequests: number; createdAt: string
+  active: boolean; totalRequests: number; keyConfigured: boolean; createdAt: string
 }
 
 export default function UserManagerPage() {
@@ -53,6 +53,7 @@ export default function UserManagerPage() {
                 <tr className="border-b border-border bg-muted/50">
                   <th className="text-left p-3 font-medium">Email</th>
                   <th className="text-left p-3 font-medium">Role</th>
+                  <th className="text-center p-3 font-medium">API Key</th>
                   <th className="text-right p-3 font-medium">Requests</th>
                   <th className="text-left p-3 font-medium">Joined</th>
                   <th className="text-center p-3 font-medium">Active</th>
@@ -61,7 +62,7 @@ export default function UserManagerPage() {
               <tbody>
                 {loading ? Array(5).fill(0).map((_, i) => (
                   <tr key={i} className="border-b border-border">
-                    {Array(5).fill(0).map((_, j) => (
+                    {Array(6).fill(0).map((_, j) => (
                       <td key={j} className="p-3"><Skeleton className="h-4" /></td>
                     ))}
                   </tr>
@@ -89,6 +90,11 @@ export default function UserManagerPage() {
                             <SelectItem value="ADMIN">Admin</SelectItem>
                           </SelectContent>
                         </Select>
+                      </td>
+                      <td className="p-3 text-center">
+                        <Badge variant={user.keyConfigured ? 'default' : 'outline'} className="text-xs">
+                          {user.keyConfigured ? '✓ Set' : 'Not set'}
+                        </Badge>
                       </td>
                       <td className="p-3 text-right">{user.totalRequests}</td>
                       <td className="p-3 text-xs text-muted-foreground">

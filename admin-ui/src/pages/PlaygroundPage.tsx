@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { chatApi } from '@/lib/api'
+import { chatApi, apiKeyApi, usageApi } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import { useIsMobile } from '@/hooks/useWindowSize'
 import { ChangePasswordDialog } from '@/components/ui/change-password-dialog'
 import {
   Send, Plus, Trash2, Menu, X, Copy, KeyRound,
-  Moon, Sun, LogOut, Settings, ChevronRight, Zap
+  Moon, Sun, LogOut, Settings, ChevronRight, Zap, AlertTriangle
 } from 'lucide-react'
 
 interface Model { id: string }
@@ -39,6 +39,8 @@ export default function PlaygroundPage() {
   const [streaming, setStreaming] = useState(false)
   const [lastUsage, setLastUsage] = useState<TokenUsage | null>(null)
   const [changePwOpen, setChangePwOpen] = useState(false)
+  const [keyConfigured, setKeyConfigured] = useState<boolean | null>(null)
+  const [modelUsageChip, setModelUsageChip] = useState<{requests: number; maxRequests: number} | null>(null)
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -46,7 +48,7 @@ export default function PlaygroundPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load models and conversations
+  // Load models, conversations, and key status
   useEffect(() => {
     chatApi.getModels().then(r => {
       const list: Model[] = r.data.models.map((id: string) => ({ id }))
@@ -54,6 +56,14 @@ export default function PlaygroundPage() {
       if (list.length > 0) setSelectedModel(list[0].id)
     })
     chatApi.getConversations().then(r => setConversations(r.data))
+    apiKeyApi.getStatus().then(r => setKeyConfigured(r.data.configured)).catch(() => setKeyConfigured(false))
+  }, [])
+
+  // Refresh per-model usage chip after a message completes
+  const refreshModelUsage = useCallback((model: string) => {
+    usageApi.getModelUsage(model)
+      .then(r => setModelUsageChip({ requests: r.data.requests, maxRequests: r.data.maxRequests }))
+      .catch(() => {})
   }, [])
 
   // Keyboard shortcut for command palette
@@ -186,10 +196,26 @@ export default function PlaygroundPage() {
         try { errMsg = JSON.parse(errBody)?.error ?? errMsg } catch { /* raw text */ }
 
         if (response.status === 429) {
-          toast.error(`Rate limited: ${errMsg}`, {
-            description: 'Wait a few seconds, then try again or switch to a different model.',
-            duration: 6000,
+          // Parse resetAt from usage limit response if present
+          let desc = 'Wait a few seconds, then try again or switch to a different model.'
+          try {
+            const body = JSON.parse(await response.text())
+            if (body.resetAt) {
+              const ms = new Date(body.resetAt).getTime() - Date.now()
+              const h = Math.floor(ms / 3600000)
+              const m = Math.floor((ms % 3600000) / 60000)
+              desc = `Daily limit reached. Resets in ${h}h ${m}m.`
+            }
+          } catch { /* ignore */ }
+          toast.error(errMsg, { description: desc, duration: 8000 })
+        } else if (response.status === 409) {
+          // KeyNotConfiguredException — no key set
+          toast.error('No API key configured', {
+            description: 'Add your OpenRouter API key in Settings to start chatting.',
+            action: { label: 'Go to Settings', onClick: () => navigate('/settings') },
+            duration: 10000,
           })
+          setKeyConfigured(false)
         } else if (response.status === 404) {
           toast.error('Conversation not found')
         } else {
@@ -264,6 +290,8 @@ export default function PlaygroundPage() {
               ))
             }
             if (payload.usage) setLastUsage(payload.usage)
+            // Refresh per-model usage chip
+            if (activeConversation?.model) refreshModelUsage(activeConversation.model)
           } catch {
             // Malformed done payload — bubble stays with streamed content, that's fine
           }
@@ -392,8 +420,8 @@ export default function PlaygroundPage() {
               <Settings className="w-3 h-3" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7 flex-1" title="Change password"
-            onClick={() => setChangePwOpen(true)}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 flex-1" title="API Key Settings"
+            onClick={() => navigate('/settings')}>
             <KeyRound className="w-3 h-3" />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 flex-1" title="Sign out"
@@ -460,6 +488,22 @@ export default function PlaygroundPage() {
             <kbd className="text-[10px] bg-muted px-1 rounded">⌘K</kbd>
           </Button>
         </header>
+
+        {/* No-key banner */}
+        {keyConfigured === false && (
+          <div className="mx-4 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-sm">
+            <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />
+            <span className="text-foreground flex-1">
+              Add your OpenRouter API key in Settings to start chatting.
+            </span>
+            <button
+              onClick={() => navigate('/settings')}
+              className="text-xs font-medium text-yellow-600 dark:text-yellow-400 hover:underline shrink-0"
+            >
+              Go to Settings →
+            </button>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
@@ -606,9 +650,20 @@ export default function PlaygroundPage() {
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground text-center mt-2">
-              AI can make mistakes. Verify important information.
-            </p>
+            <div className="flex items-center justify-between mt-2 px-1">
+              <p className="text-xs text-muted-foreground">
+                AI can make mistakes. Verify important information.
+              </p>
+              {modelUsageChip && (
+                <span className="text-xs text-muted-foreground">
+                  {modelDisplayName(activeConversation?.model ?? selectedModel)}:{' '}
+                  <span className={modelUsageChip.requests / modelUsageChip.maxRequests >= 0.9 ? 'text-red-500' :
+                    modelUsageChip.requests / modelUsageChip.maxRequests >= 0.7 ? 'text-yellow-500' : 'text-green-500'}>
+                    {modelUsageChip.requests}/{modelUsageChip.maxRequests}
+                  </span>{' '}req today
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

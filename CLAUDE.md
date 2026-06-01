@@ -152,6 +152,7 @@ All secrets live in `.env` (never committed). Copy from `.env.example`.
 | `JWT_SECRET` | Spring Boot | Base64-encoded, minimum 256 bits (32 bytes) |
 | `JWT_EXPIRATION_MS` | Spring Boot | Default: 86400000 (24 hours) |
 | `OPENROUTER_PROXY_URL` | Spring Boot | `http://localhost:8081` (local) or `http://openrouter-proxy:8080` (Docker) |
+| `ENCRYPTION_MASTER_KEY` | Spring Boot | 64-char hex (32 bytes) for AES-GCM key encryption. Generate: `openssl rand -hex 32` |
 
 ---
 
@@ -183,6 +184,19 @@ event: done    data: {"messageId":1,"conversationId":1,"title":"...","normalized
 event: error   data: {"error":"...","remainingTokens":0}
 ```
 
+### API Key — BYOK (requires JWT)
+```
+PUT    /api/user/api-key             {"apiKey": "sk-or-v1-..."} — validate + save
+DELETE /api/user/api-key                                         — remove key
+GET    /api/user/api-key/status                                  — {configured: true|false}
+```
+
+### Usage (requires JWT)
+```
+GET  /api/user/usage              — today's per-model usage + global aggregate
+GET  /api/user/usage/{modelId}    — today's usage for a specific model
+```
+
 ### Admin (requires JWT — ROLE_ADMIN only)
 ```
 GET  /api/admin/stats
@@ -193,6 +207,12 @@ PUT  /api/admin/models/{modelId}/toggle
 GET  /api/admin/users
 PUT  /api/admin/users/{id}/role      {"role": "USER"|"ADMIN"}
 PUT  /api/admin/users/{id}/status    {"active": true|false}
+GET  /api/admin/usage/limits                              — all global defaults
+PUT  /api/admin/usage/limits/{modelId}                    — set/update global default {"maxRequestsPerDay":50,"maxTokensPerDay":100000}
+GET  /api/admin/users/{id}/usage/limits                   — user's overrides
+PUT  /api/admin/users/{id}/usage/limits/{modelId}         — set/update user override
+DELETE /api/admin/users/{id}/usage/limits/{modelId}       — remove override (falls back to global)
+GET  /api/admin/users/{id}/usage                          — today's per-model usage for a user
 ```
 
 ### System
@@ -207,11 +227,13 @@ GET http://localhost:8081/health     nginx proxy health
 
 Tables managed by Hibernate `ddl-auto=update` except `model_config` which is seeded via `db/seed.sql`:
 
-- `users` — email, password_hash (BCrypt), role (USER/ADMIN), active, timestamps
+- `users` — email, password_hash (BCrypt), role (USER/ADMIN), active, timestamps; + V4: openrouter_key_encrypted (AES-GCM), openrouter_key_validated (BIT), openrouter_key_set_at
 - `chat_logs` — per-request log: user, model, tokens, latency, status, response preview
 - `model_config` — enabled/disabled state per free model, seeded from `db/seed.sql`
 - `conversations` — per-user chat sessions: title, model, timestamps
 - `conversation_messages` — messages per conversation: role (user/assistant), content
+- `model_usage_limits` — V4: admin-controlled daily limits per model; user_id=NULL = global default
+- `user_model_usage` — V4: daily per-user-per-model counters (request_count, token_count, reset_at)
 
 ---
 
@@ -257,6 +279,14 @@ Update in two places when models change:
 - **Never edit applied Flyway migrations** — V1/V2/V3 are locked; add V4+ for any schema change
 - **Flyway boolean columns must be `BIT(1)`** — Hibernate 6 / MySQL8Dialect maps Java `boolean` → `Types#BOOLEAN` → `BIT`; using `TINYINT` causes `SchemaManagementException` on startup
 - **Never hardcode the OpenRouter API key** — envsubst only, never in image layers
+- **ENCRYPTION_MASTER_KEY must be 64 hex chars (32 bytes)** — AES-GCM key for encrypting stored user OpenRouter keys. Generate: `openssl rand -hex 32`. Set in `.env` and `docker-compose.yml`.
+- **Never expose stored OpenRouter API keys via HTTP** — `openrouterKeyEncrypted` is decrypted in-process only; no endpoint returns the plaintext value
+- **nginx Authorization is now pass-through** — Spring Boot sets `Authorization: Bearer {userKey}`; nginx forwards it with `$http_authorization`. The `OPENROUTER_API_KEY` env var is no longer injected for chat (kept for health/backwards compat)
+- **`model_usage_limits` global row has `user_id = NULL`** — always use `IS NULL` in queries, never `= NULL`
+- **No usage reset scheduled job** — usage windows are date-keyed; a new UTC day creates a fresh row automatically
+- **Request limit is pre-call, token limit is post-call** — request count is checked before forwarding (unknown tokens). Token count is checked post-call; if over limit, next call is hard-blocked
+- **KeyNotConfiguredException → 409** — user tried to chat without a saved API key; frontend must redirect to Settings
+- **UsageLimitExceededException → 429 with `resetAt`** — daily limit reached; response includes `limitType` ("request"/"tokens") and ISO `resetAt`
 - **Never expose ports on 0.0.0.0** — all ports bind to `127.0.0.1` only
 - **Gradle wrapper only** — never run `gradle` directly; always use `gradlew.bat`
 - **Gradle runtime must be Java 21** — Gradle 8.14 does not support Java 25 runtime (ADR-004). Gradle Toolchain auto-provisions JDK 25 for compilation. Gradle 8.14 itself still requires JDK 21 in PATH.
@@ -307,6 +337,11 @@ Update in two places when models change:
 | `429 rate limited` from OpenRouter | Free tier upstream throttle | Wait 30s, try different model |
 | Gradle requires JDK 21 in PATH | `./gradlew` fails with wrong Java version | Ensure `JAVA_HOME` or PATH points to JDK 21 — Toolchain handles JDK 25 compilation automatically |
 | `outline-ring/50` CSS error | shadcn radix-nova opacity modifier incompatible | Remove `outline-ring/50` from index.css |
+| Chat returns 409 | User has no API key configured | User must go to Settings → add OpenRouter API key |
+| `IllegalArgumentException: ENCRYPTION_MASTER_KEY must be 64 hex chars` | Key missing or wrong format | Generate: `openssl rand -hex 32`, set in `.env` |
+| Flyway V4 checksum mismatch | V4 was edited after apply | Never edit V4; create V5+ for changes |
+| `KeyNotConfiguredException` in logs | getKeyForUser called for user with no key | Expected — 409 returned to client; no action needed |
+| Usage not incrementing | Token count 0 from OpenRouter | OpenRouter sometimes omits `usage` in stream; counters stay at 0 for that request |
 
 ---
 
@@ -317,4 +352,5 @@ Update in two places when models change:
 - [x] Phase 3 — Dockerize Spring Boot (multi-stage Dockerfile)
 - [x] Phase 4 — Admin UI + AI Playground (React + shadcn/ui)
 - [x] Phase 4.5 — SSE streaming, markdown quality, auth context fix, login bug fixes
+- [x] Phase 4.6 — PRD-002: BYOK (per-user OpenRouter API key), AES-GCM encryption, daily usage tracking, usage limits admin
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline

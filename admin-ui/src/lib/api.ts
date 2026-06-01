@@ -72,4 +72,27 @@ export const adminApi = {
     api.put(`/admin/users/${id}/role`, { role }),
   updateUserStatus: (id: number, active: boolean) =>
     api.put(`/admin/users/${id}/status`, { active }),
+  // Usage limits
+  getGlobalLimits: () => api.get('/admin/usage/limits'),
+  setGlobalLimit: (modelId: string, maxRequestsPerDay: number, maxTokensPerDay: number) =>
+    api.put(`/admin/usage/limits/${encodeURIComponent(modelId)}`, { maxRequestsPerDay, maxTokensPerDay }),
+  getUserLimits: (userId: number) => api.get(`/admin/users/${userId}/usage/limits`),
+  setUserLimit: (userId: number, modelId: string, maxRequestsPerDay: number, maxTokensPerDay: number) =>
+    api.put(`/admin/users/${userId}/usage/limits/${encodeURIComponent(modelId)}`, { maxRequestsPerDay, maxTokensPerDay }),
+  deleteUserLimit: (userId: number, modelId: string) =>
+    api.delete(`/admin/users/${userId}/usage/limits/${encodeURIComponent(modelId)}`),
+  getUserUsage: (userId: number) => api.get(`/admin/users/${userId}/usage`),
+}
+
+// ── API Key (per-user BYOK) ───────────────────────────────────────────────
+export const apiKeyApi = {
+  getStatus: () => api.get('/user/api-key/status'),
+  saveKey: (apiKey: string) => api.put('/user/api-key', { apiKey }),
+  removeKey: () => api.delete('/user/api-key'),
+}
+
+// ── Usage ─────────────────────────────────────────────────────────────────
+export const usageApi = {
+  getTodayUsage: () => api.get('/user/usage'),
+  getModelUsage: (modelId: string) => api.get(`/user/usage/${encodeURIComponent(modelId)}`),
 }

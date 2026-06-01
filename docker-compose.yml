@@ -94,6 +94,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://openrouter-mysql:3306/${MYSQL_DATABASE}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
       # Override proxy URL to use Docker service name
       OPENROUTER_PROXY_URL: http://openrouter-proxy:8080
+      # AES-GCM master key for encrypting stored OpenRouter API keys
+      ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
