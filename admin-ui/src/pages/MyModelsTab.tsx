@@ -21,6 +21,8 @@ const OWNER_GROUPS = [
 ]
 const KNOWN_PREFIXES = OWNER_GROUPS.filter(g => g.prefix).map(g => g.prefix)
 
+type FilterTab = 'all' | 'enabled' | 'disabled'
+
 function groupModels(models: UserModelDto[]) {
   return OWNER_GROUPS.map(owner => ({
     ...owner,
@@ -48,6 +50,8 @@ function groupModels(models: UserModelDto[]) {
 export default function MyModelsTab() {
   const { models, totalAdminEnabled, totalUserEnabled, loading, error, refresh } =
     useEffectiveModels()
+
+  const [filter, setFilter] = useState<FilterTab>('all')
 
   // Local optimistic overrides: modelConfigId → userEnabled
   // Applied on top of server state — cleared on refresh
@@ -105,6 +109,17 @@ export default function MyModelsTab() {
     return count + (effectivelyEnabled ? 1 : 0)
   }, 0)
 
+  // Counts for filter tabs (based on userEnabled, not effectivelyEnabled — mirrors admin UX)
+  const enabledCount  = models.filter(m => getDisplayState(m).userEnabled).length
+  const disabledCount = models.length - enabledCount
+
+  // Apply filter before grouping
+  const filteredModels = models.filter(m => {
+    if (filter === 'all') return true
+    const { userEnabled } = getDisplayState(m)
+    return filter === 'enabled' ? userEnabled : !userEnabled
+  })
+
   if (loading) {
     return <p className="text-sm text-muted-foreground py-4">Loading models…</p>
   }
@@ -131,15 +146,44 @@ export default function MyModelsTab() {
         </p>
       </div>
 
-      {/* Counter + refresh */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          Showing{' '}
-          <span className="font-medium text-foreground">{effectiveTotalUserEnabled}</span>
-          {' '}of{' '}
-          <span className="font-medium text-foreground">{totalAdminEnabled}</span>
-          {' '}admin-enabled models
-        </span>
+      {/* Filter tabs + refresh */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="inline-flex rounded-lg border border-border bg-muted p-1 gap-1">
+          {([
+            { key: 'all'      as FilterTab, label: 'All',      count: models.length  },
+            { key: 'enabled'  as FilterTab, label: 'Enabled',  count: enabledCount   },
+            { key: 'disabled' as FilterTab, label: 'Disabled', count: disabledCount  },
+          ]).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
+                filter === tab.key
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {tab.key === 'enabled' && (
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+              )}
+              {tab.key === 'disabled' && (
+                <span className="w-2 h-2 rounded-full bg-muted-foreground shrink-0" />
+              )}
+              {tab.label}
+              <span className={cn(
+                'text-xs px-1.5 py-0.5 rounded-full font-medium min-w-[20px] text-center',
+                filter === tab.key
+                  ? tab.key === 'enabled'  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                  : tab.key === 'disabled' ? 'bg-muted-foreground/20 text-muted-foreground'
+                  :                         'bg-primary/15 text-primary'
+                  : 'bg-transparent text-muted-foreground'
+              )}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
         <Button variant="ghost" size="sm" onClick={refresh} className="h-7 text-xs">
           <RefreshCw className="w-3 h-3 mr-1" /> Refresh
         </Button>
@@ -160,9 +204,13 @@ export default function MyModelsTab() {
         <p className="text-sm text-muted-foreground text-center py-8">
           No models configured. Contact your admin.
         </p>
+      ) : filteredModels.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          No models in this category.
+        </p>
       ) : (
         <div className="space-y-4">
-          {groupModels(models).map(group => (
+          {groupModels(filteredModels).map(group => (
             <div key={group.label}>
               {/* Owner section header */}
               <div className="flex items-center gap-2 mb-2 px-1">
