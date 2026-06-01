@@ -347,6 +347,10 @@ Update in two places when models change:
 - **PRD-003: No FK on `user_model_preferences.model_id`** — orphaned rows (from removed model_config entries) are harmless; `getEffectiveModels` excludes them via `model_config` JOIN
 - **PRD-003: SecurityConfig rule** — `/api/user/models/**` → `hasAnyRole("USER", "ADMIN")` added before the `anyRequest()` catch-all
 - **PRD-003: Flyway V5** — `user_model_preferences` table; V1–V5 are locked; next schema change is V6
+- **@Transactional required on any controller method accessing lazy collections** — Spring closes the Hibernate session after each repository call. Any method that calls `entity.getLazyCollection()` after loading via a repository must be `@Transactional` (readOnly for GETs, default for writes). Missing this causes `LazyInitializationException`.
+- **AuthorizationDeniedException must have a dedicated handler** — `AuthProvider` probes `/api/admin/stats` after every login to detect admin status; regular users always get 403. Without a specific handler it falls through to the catch-all and logs at ERROR. Handler returns 403 at DEBUG level — no stack trace.
+- **Upstream 429 in SSE must send error event before completeWithError()** — generic catch calling `completeWithError()` directly gives the client no feedback. Always send `event: error` first. Detect upstream 429 by `e.getMessage().contains("stream error 429")` and log at WARN, not ERROR.
+- **My Models and Model Manager share the same OWNER_GROUPS categorisation** — both group by owner (NVIDIA, Meta, Google, etc.) with emoji headers and All/Enabled/Disabled filter tabs. If a new provider is added, update `OWNER_GROUPS` in both `ModelManagerPage.tsx` and `MyModelsTab.tsx`.
 
 ---
 
@@ -390,6 +394,10 @@ Update in two places when models change:
 | `SchemaManagementException` on `user_model_preferences.enabled` | Column created as BOOLEAN/TINYINT instead of BIT(1) | Drop DB and re-run with corrected V5 using `BIT(1)` |
 | Toggle optimistic UI doesn't revert | Error toast fires but state sticks | Ensure `setOptimisticOverrides` revert path runs in catch block of `handleToggle` |
 | Admin sees preference rows affecting their model list | Admin bypass not firing | Verify `isAdmin` flag is derived from `user.getRole() == Role.ADMIN` in controller, passed to service |
+| `LazyInitializationException` on `Conversation.messages` | Controller method loads entity without `@Transactional`; session closes before lazy collection is accessed | Add `@Transactional(readOnly = true)` to `get()` and `@Transactional` to `sendMessage()` in ConversationController |
+| `ERROR Unhandled exception: Access Denied` on every user login | `AuthorizationDeniedException` from `/api/admin/stats` probe falls through to catch-all | Add dedicated `@ExceptionHandler(AuthorizationDeniedException.class)` returning 403 at DEBUG level |
+| SSE stream closes silently on upstream 429 — no error shown in UI | Generic catch calls `completeWithError()` without sending an `event: error` SSE event first | Detect `"stream error 429"` in message, send error event to client, log at WARN not ERROR |
+| My Models tab shows flat list, Model Manager shows grouped | `OWNER_GROUPS` was only in `ModelManagerPage` | Both views now share the same grouping logic; update `OWNER_GROUPS` in both files when providers change |
 
 ---
 
