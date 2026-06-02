@@ -38,3 +38,4 @@ desktop.ini
 .idea/
 .vscode/
 *.iml
+.claude/
