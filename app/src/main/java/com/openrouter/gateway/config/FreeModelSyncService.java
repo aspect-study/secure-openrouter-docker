@@ -125,7 +125,16 @@ public class FreeModelSyncService {
             }
         }
 
-        log.debug("Fetched {} free model IDs from OpenRouter", freeIds.size());
-        return freeIds;
+        // If both "X" and "X:free" appear (base model with pricing=0 AND an explicit :free
+        // variant), drop the base ID — the :free variant is canonical and matches the seeded
+        // model IDs, preventing duplicate rows that display as the same model in the UI.
+        Set<String> freeSet = new java.util.HashSet<>(freeIds);
+        List<String> deduped = freeIds.stream()
+                .filter(id -> !(!id.endsWith(":free") && freeSet.contains(id + ":free")))
+                .distinct()
+                .collect(Collectors.toList());
+
+        log.debug("Fetched {} free model IDs from OpenRouter ({} after dedup)", freeIds.size(), deduped.size());
+        return deduped;
     }
 }
