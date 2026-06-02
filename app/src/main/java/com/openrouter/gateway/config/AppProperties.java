@@ -57,8 +57,13 @@ public class AppProperties {
         @NotBlank
         private String proxyUrl = "http://localhost:8081";
 
+        private String apiKey = "";
+
         public String getProxyUrl() { return proxyUrl; }
         public void setProxyUrl(String proxyUrl) { this.proxyUrl = proxyUrl; }
+
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
     }
 
     public static class RateLimit {

@@ -2,6 +2,7 @@ package com.openrouter.gateway.admin;
 
 import com.openrouter.gateway.auth.User;
 import com.openrouter.gateway.auth.UserRepository;
+import com.openrouter.gateway.config.FreeModelSyncService;
 import com.openrouter.gateway.config.ModelConfig;
 import com.openrouter.gateway.config.ModelConfigRepository;
 import com.openrouter.gateway.config.ModelConfigService;
@@ -42,15 +43,18 @@ public class AdminController {
     private final UserRepository userRepository;
     private final ModelConfigRepository modelConfigRepository;
     private final ModelConfigService modelConfigService;
+    private final FreeModelSyncService freeModelSyncService;
 
     public AdminController(ChatLogRepository chatLogRepository,
                            UserRepository userRepository,
                            ModelConfigRepository modelConfigRepository,
-                           ModelConfigService modelConfigService) {
+                           ModelConfigService modelConfigService,
+                           FreeModelSyncService freeModelSyncService) {
         this.chatLogRepository = chatLogRepository;
         this.userRepository = userRepository;
         this.modelConfigRepository = modelConfigRepository;
         this.modelConfigService = modelConfigService;
+        this.freeModelSyncService = freeModelSyncService;
     }
 
     // ── Stats ─────────────────────────────────────────────────────────────
@@ -141,6 +145,20 @@ public class AdminController {
         return ResponseEntity.ok(ModelConfigDto.from(saved));
     }
 
+    // ── Model Sync ────────────────────────────────────────────────────────
+
+    @PostMapping("/sync-models")
+    public ResponseEntity<SyncResultDto> syncModels() {
+        try {
+            FreeModelSyncService.SyncResult result = freeModelSyncService.syncFreeModels();
+            log.info("Admin triggered model sync: discovered={}, added={}", result.discovered(), result.added());
+            return ResponseEntity.ok(new SyncResultDto(result.discovered(), result.added(), result.newModelIds()));
+        } catch (Exception e) {
+            log.error("Admin model sync failed: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     // ── Users ─────────────────────────────────────────────────────────────
 
     @GetMapping("/users")
@@ -207,6 +225,8 @@ public class AdminController {
                     m.getCreatedAt().toString());
         }
     }
+
+    public record SyncResultDto(int discovered, int added, List<String> newModelIds) {}
 
     public record UserDto(Long id, String email, String role, boolean active,
                            long totalRequests, boolean keyConfigured, String createdAt) {

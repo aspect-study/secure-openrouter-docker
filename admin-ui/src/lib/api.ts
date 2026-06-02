@@ -67,6 +67,7 @@ export const adminApi = {
   getModels: () => api.get('/admin/models'),
   toggleModel: (modelId: string) =>
     api.put('/admin/models/toggle', { modelId }),
+  syncModels: () => api.post('/admin/sync-models'),
   getUsers: () => api.get('/admin/users'),
   updateUserRole: (id: number, role: string) =>
     api.put(`/admin/users/${id}/role`, { role }),

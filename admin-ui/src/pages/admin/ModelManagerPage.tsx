@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { modelEmoji, modelDisplayName, modelInfo, formatDate } from '@/lib/utils'
 import type { ModelInfo } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronUp, Clock, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Cpu, BarChart2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Cpu, BarChart2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ModelConfig {
@@ -76,12 +76,34 @@ export default function ModelManagerPage() {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterTab>('all')
+  const [syncing, setSyncing] = useState(false)
+
+  const loadModels = () => adminApi.getModels().then(r => setModels(r.data))
 
   useEffect(() => {
-    adminApi.getModels()
-      .then(r => setModels(r.data))
-      .finally(() => setLoading(false))
+    loadModels().finally(() => setLoading(false))
   }, [])
+
+  const syncModels = async () => {
+    setSyncing(true)
+    try {
+      const r = await adminApi.syncModels()
+      const { discovered, added, newModelIds } = r.data
+      if (added > 0) {
+        toast.success(`Found ${added} new model${added > 1 ? 's' : ''} — added as disabled. Review below.`)
+        await loadModels()
+      } else {
+        toast.success(`All models up to date (${discovered} free models on OpenRouter).`)
+      }
+      if (newModelIds?.length > 0) {
+        console.info('New models added:', newModelIds)
+      }
+    } catch {
+      toast.error('Sync failed — check server logs.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const toggle = async (modelId: string) => {
     try {
@@ -122,11 +144,24 @@ export default function ModelManagerPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Model Manager</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Enable or disable free models, grouped by owner. Click a model to view full details.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Model Manager</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Enable or disable free models, grouped by owner. Click a model to view full details.
+          </p>
+        </div>
+        <button
+          onClick={syncModels}
+          disabled={syncing || loading}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0',
+            'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed'
+          )}
+        >
+          <RefreshCw className={cn('w-4 h-4', syncing && 'animate-spin')} />
+          {syncing ? 'Syncing…' : 'Sync Models'}
+        </button>
       </div>
 
       {/* Filter toggle */}
