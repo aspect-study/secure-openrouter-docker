@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCA-F Study Guide — Claude Certified Architect Foundations</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+:root,[data-theme="dark"]{
+  --bg:#0d1117;--surf:#161b22;--surf2:#21262d;--bord:#30363d;
+  --txt:#e6edf3;--muted:#8b949e;--accent:#f78166;--acc2:#79c0ff;
+  --green:#3fb950;--red:#f85149;--yellow:#d29922;--purple:#bc8cff;
+  --tag-bg:#21262d;--code-bg:#161b22;
+}
+[data-theme="light"]{
+  --bg:#ffffff;--surf:#f6f8fa;--surf2:#eaeef2;--bord:#d0d7de;
+  --txt:#1f2328;--muted:#57606a;--accent:#cf222e;--acc2:#0969da;
+  --green:#1a7f37;--red:#cf222e;--yellow:#9a6700;--purple:#6639ba;
+  --tag-bg:#eaeef2;--code-bg:#f6f8fa;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.6;display:flex;flex-direction:column;min-height:100vh}
+
+/* ── HEADER ── */
+header{position:sticky;top:0;z-index:100;background:var(--surf);border-bottom:1px solid var(--bord);padding:10px 20px;display:flex;align-items:center;gap:16px}
+.logo{font-size:18px;font-weight:700;color:var(--acc2);white-space:nowrap}
+.logo span{color:var(--accent)}
+.progress-wrap{flex:1;display:flex;align-items:center;gap:10px}
+.progress-track{flex:1;height:6px;background:var(--surf2);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--acc2));border-radius:3px;transition:width .4s ease}
+#prog-pct{font-size:12px;color:var(--muted);white-space:nowrap;min-width:36px}
+.header-btns{display:flex;gap:8px}
+button.hbtn{background:var(--surf2);border:1px solid var(--bord);color:var(--txt);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:13px;transition:.15s}
+button.hbtn:hover{border-color:var(--acc2);color:var(--acc2)}
+
+/* ── LAYOUT ── */
+.layout{display:flex;flex:1}
+
+/* ── SIDEBAR ── */
+aside{width:240px;flex-shrink:0;background:var(--surf);border-right:1px solid var(--bord);position:sticky;top:49px;height:calc(100vh - 49px);overflow-y:auto;padding:12px 0}
+aside::-webkit-scrollbar{width:4px}
+aside::-webkit-scrollbar-track{background:transparent}
+aside::-webkit-scrollbar-thumb{background:var(--bord);border-radius:2px}
+.nav-section{padding:4px 0}
+.nav-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:6px 16px 2px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:5px 16px;cursor:pointer;color:var(--muted);font-size:13px;border-left:2px solid transparent;transition:.15s;text-decoration:none}
+.nav-item:hover{color:var(--txt);background:var(--surf2)}
+.nav-item.active{color:var(--acc2);border-left-color:var(--acc2);background:var(--surf2)}
+.nav-dot{width:8px;height:8px;border-radius:50%;background:var(--bord);flex-shrink:0;transition:.3s}
+.nav-dot.done{background:var(--green)}
+.nav-sub{padding-left:12px}
+.nav-item.sub{font-size:12px;padding:3px 16px 3px 28px}
+
+/* ── MAIN ── */
+main{flex:1;padding:24px 32px;max-width:1000px;min-width:0}
+
+/* ── SECTION CARD ── */
+.section-card{background:var(--surf);border:1px solid var(--bord);border-radius:10px;margin-bottom:16px;overflow:hidden}
+.section-head{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;user-select:none;transition:.15s}
+.section-head:hover{background:var(--surf2)}
+.section-tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.tag-0{background:rgba(248,129,102,.15);color:#f89166}
+.tag-1{background:rgba(121,192,255,.15);color:#79c0ff}
+.tag-2{background:rgba(63,185,80,.15);color:#3fb950}
+.tag-3{background:rgba(188,140,255,.15);color:#bc8cff}
+.tag-4{background:rgba(210,153,34,.15);color:#d29922}
+.tag-5{background:rgba(248,81,73,.15);color:#f85149}
+.section-title{font-size:15px;font-weight:600;flex:1}
+.section-subtitle{font-size:12px;color:var(--muted)}
+.section-check{width:18px;height:18px;border-radius:4px;border:2px solid var(--bord);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.2s;margin-left:4px}
+.section-check.done{background:var(--green);border-color:var(--green)}
+.section-check.done::after{content:'✓';color:#fff;font-size:11px;font-weight:700}
+.chevron{color:var(--muted);font-size:12px;transition:transform .25s;flex-shrink:0}
+.chevron.open{transform:rotate(90deg)}
+.section-body{padding:18px;border-top:1px solid var(--bord);display:none}
+.section-body.open{display:block}
+
+/* ── TYPOGRAPHY ── */
+h2{font-size:17px;font-weight:700;margin-bottom:12px;color:var(--txt)}
+h3{font-size:15px;font-weight:600;margin:16px 0 8px;color:var(--acc2)}
+h4{font-size:13px;font-weight:600;margin:12px 0 6px;color:var(--txt)}
+p{margin-bottom:10px;color:var(--txt)}
+ul,ol{margin:8px 0 10px 20px}
+li{margin-bottom:4px}
+strong{color:var(--txt);font-weight:600}
+a{color:var(--acc2);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── CODE ── */
+pre{background:var(--code-bg);border:1px solid var(--bord);border-radius:8px;padding:14px;margin:10px 0;overflow-x:auto;font-size:13px}
+code{font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;font-size:12.5px}
+:not(pre)>code{background:var(--tag-bg);padding:1px 6px;border-radius:4px;font-size:12px;color:var(--accent)}
+
+/* ── TABLES ── */
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th{background:var(--surf2);padding:8px 12px;text-align:left;font-weight:600;border:1px solid var(--bord)}
+td{padding:7px 12px;border:1px solid var(--bord);vertical-align:top}
+tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+[data-theme="light"] tr:nth-child(even) td{background:rgba(0,0,0,.02)}
+
+/* ── CALLOUTS ── */
+.callout{border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;border-left:3px solid}
+.callout-warn{background:var(--yellow);color:#1f2328;border-color:#9a6700;background:rgba(210,153,34,.12);color:var(--yellow)}
+.callout-tip{background:rgba(63,185,80,.1);color:var(--green);border-color:var(--green)}
+.callout-danger{background:rgba(248,81,73,.1);color:var(--red);border-color:var(--red)}
+.callout-info{background:rgba(121,192,255,.1);color:var(--acc2);border-color:var(--acc2)}
+.callout-project{background:rgba(188,140,255,.1);color:var(--purple);border-color:var(--purple)}
+.callout strong{color:inherit}
+
+/* ── TRAP LISTS ── */
+.trap-list{list-style:none;margin:8px 0}
+.trap-list li{padding:4px 0 4px 20px;position:relative}
+.trap-list li.bad::before{content:'✗';position:absolute;left:0;color:var(--red);font-weight:700}
+.trap-list li.good::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:700}
+
+/* ── CHECKLIST ── */
+.checklist{list-style:none;margin:8px 0}
+.check-item{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--bord)}
+.check-item:last-child{border-bottom:none}
+.check-item input[type=checkbox]{margin-top:2px;width:15px;height:15px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.check-item label{cursor:pointer;font-size:13px}
+.check-item input:checked~label{color:var(--muted);text-decoration:line-through}
+
+/* ── DOMAIN BARS ── */
+.domain-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.domain-card{background:var(--surf2);border:1px solid var(--bord);border-radius:8px;padding:12px}
+.domain-name{font-weight:600;font-size:13px;margin-bottom:4px}
+.domain-bar-wrap{background:var(--bord);border-radius:4px;height:6px;margin:6px 0}
+.domain-bar{height:100%;border-radius:4px;background:var(--accent)}
+.domain-pct{font-size:12px;color:var(--muted)}
+
+/* ── SCENARIO PILLS ── */
+.scenario-grid{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.s-pill{font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--bord);background:var(--tag-bg);color:var(--muted)}
+.s-pill.official{border-color:var(--green);color:var(--green);background:rgba(63,185,80,.08)}
+.s-pill.extended{border-color:var(--yellow);color:var(--yellow);background:rgba(210,153,34,.08)}
+
+/* ── ADR TABLE ── */
+.adr-row td:first-child{font-family:monospace;color:var(--acc2);white-space:nowrap;font-size:12px}
+
+/* ── SUBSECTION ── */
+.subsection{background:var(--surf2);border-radius:8px;padding:14px;margin:12px 0}
+.sub-head{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.sub-title{font-size:13px;font-weight:600}
+.sub-body{margin-top:10px;display:none}
+.sub-body.open{display:block}
+
+/* ── SCROLLBAR (main) ── */
+main::-webkit-scrollbar{width:6px}
+main::-webkit-scrollbar-thumb{background:var(--bord);border-radius:3px}
+
+/* ── UTILS ── */
+.mt{margin-top:12px}.mb{margin-bottom:12px}.row{display:flex;gap:12px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-right:4px}
+.b-blue{background:rgba(121,192,255,.15);color:var(--acc2)}
+.b-green{background:rgba(63,185,80,.15);color:var(--green)}
+.b-red{background:rgba(248,81,73,.15);color:var(--red)}
+.b-yellow{background:rgba(210,153,34,.15);color:var(--yellow)}
+.b-purple{background:rgba(188,140,255,.15);color:var(--purple)}
+hr{border:none;border-top:1px solid var(--bord);margin:14px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">CCA<span>-F</span></div>
+  <div class="progress-wrap">
+    <div class="progress-track"><div class="progress-fill" id="pfill" style="width:0%"></div></div>
+    <span id="prog-pct">0%</span>
+  </div>
+  <div class="header-btns">
+    <button class="hbtn" onclick="toggleAll(true)">Expand All</button>
+    <button class="hbtn" onclick="toggleAll(false)">Collapse All</button>
+    <button class="hbtn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+  </div>
+</header>
+
+<div class="layout">
+<aside id="sidebar">
+  <div class="nav-section">
+    <div class="nav-label">Exam</div>
+    <a class="nav-item" onclick="jumpTo('s0')"><span class="nav-dot" id="dot-s0"></span>§0 Exam Meta</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Foundations</div>
+    <a class="nav-item" onclick="jumpTo('s1')"><span class="nav-dot" id="dot-s1"></span>§1 Core Foundations</a>
+    <a class="nav-item sub" onclick="jumpTo('s1-1')">1.1 Claude API</a>
+    <a class="nav-item sub" onclick="jumpTo('s1-2')">1.2 Prompt Engineering</a>
+    <a class="nav-item sub" onclick="jumpTo('s1-3')">1.3 Claude Code</a>
+    <a class="nav-item sub" onclick="jumpTo('s1-4')">1.4 MCP</a>
+    <a class="nav-item sub" onclick="jumpTo('s1-5')">1.5 Agentic Patterns</a>
+    <a class="nav-item sub" onclick="jumpTo('s1-6')">1.6 Safety & Reliability</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Scenarios</div>
+    <a class="nav-item" onclick="jumpTo('s2')"><span class="nav-dot" id="dot-s2"></span>§2 All 13 Scenarios</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-1')">2.1 Customer Support</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-2')">2.2 Code Generation</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-3')">2.3 Multi-Agent Research</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-4')">2.4 Agentic Tool Design</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-5')">2.5 Dev Productivity</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-6')">2.6 Long Docs</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-7')">2.7 Ops Agent</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-8')">2.8 Claude Code CI</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-9')">2.9 Structured Extract</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-10')">2.10 Conv. AI Patterns</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-11')">2.11 Enterprise Knowledge</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-12')">2.12 Dev Tooling</a>
+    <a class="nav-item sub" onclick="jumpTo('s2-13')">2.13 Code Execution</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Prep</div>
+    <a class="nav-item" onclick="jumpTo('s3')"><span class="nav-dot" id="dot-s3"></span>§3 Hands-On Checklist</a>
+    <a class="nav-item" onclick="jumpTo('s4')"><span class="nav-dot" id="dot-s4"></span>§4 Judgment Heuristics</a>
+    <a class="nav-item" onclick="jumpTo('s5')"><span class="nav-dot" id="dot-s5"></span>§5 Project ADRs</a>
+  </div>
+</aside>
+
+<main>
+
+<!-- ═══════════════════════════════════════════════ SECTION 0 ═══ -->
+<div class="section-card" id="s0">
+  <div class="section-head" onclick="toggleSection('s0')">
+    <span class="section-tag tag-0">§0</span>
+    <span class="section-title">Exam Meta — Read First</span>
+    <span class="section-subtitle">Format · Domains · Strategy · Scoring</span>
+    <span class="chevron" id="chev-s0">▶</span>
+    <div class="section-check" id="chk-s0" onclick="event.stopPropagation();toggleCheck('s0')"></div>
+  </div>
+  <div class="section-body" id="body-s0">
+
+    <div class="domain-grid">
+      <div class="domain-card">
+        <div class="domain-name">📋 Format</div>
+        <ul style="font-size:13px;margin-top:6px">
+          <li><strong>60 questions</strong>, 120 min (2 min avg)</li>
+          <li><strong>4 of 6 scenarios</strong> randomly selected</li>
+          <li>~10 questions per scenario</li>
+          <li>Passing score: <strong>720 / 1000</strong></li>
+          <li>Fee: $99 USD</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">🎯 What It Tests</div>
+        <ul style="font-size:13px;margin-top:6px">
+          <li><strong>Architectural judgment</strong>, not trivia</li>
+          <li>"What breaks at scale?"</li>
+          <li>"What's the security risk?"</li>
+          <li>"Which pattern fits this scenario?"</li>
+          <li>Builder mindset &gt; memorization</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Domain Weights (Feb 2025 spec)</h3>
+    <div class="domain-grid">
+      <div class="domain-card">
+        <div class="domain-name">D1 — Agentic Architecture &amp; Orchestration</div>
+        <div class="domain-bar-wrap"><div class="domain-bar" style="width:27%;background:var(--accent)"></div></div>
+        <div class="domain-pct">27% — 16 questions <span class="badge b-red">Highest weight</span></div>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">D2 — Tool Design &amp; MCP Integration</div>
+        <div class="domain-bar-wrap"><div class="domain-bar" style="width:18%;background:var(--acc2)"></div></div>
+        <div class="domain-pct">18% — 11 questions</div>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">D3 — Claude Code Config &amp; Workflows</div>
+        <div class="domain-bar-wrap"><div class="domain-bar" style="width:20%;background:var(--green)"></div></div>
+        <div class="domain-pct">20% — 12 questions</div>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">D4 — Prompt Engineering &amp; Structured Output</div>
+        <div class="domain-bar-wrap"><div class="domain-bar" style="width:20%;background:var(--purple)"></div></div>
+        <div class="domain-pct">20% — 12 questions</div>
+      </div>
+    </div>
+    <div class="domain-card" style="margin-top:10px">
+      <div class="domain-name">D5 — Context Management &amp; Reliability</div>
+      <div class="domain-bar-wrap"><div class="domain-bar" style="width:15%;background:var(--yellow)"></div></div>
+      <div class="domain-pct">15% — 9 questions <span class="badge b-yellow">Lowest weight — don't neglect</span></div>
+    </div>
+
+    <h3>Scenario Pool</h3>
+    <p style="color:var(--muted);font-size:13px">Official guide lists 6. Real exam pool has at least 13. Practice exam covers only 4. Don't let high practice score create false confidence.</p>
+    <div class="scenario-grid">
+      <span class="s-pill official">#1 Customer Support Agent</span>
+      <span class="s-pill official">#2 Code Generation (Claude Code)</span>
+      <span class="s-pill official">#3 Multi-Agent Research</span>
+      <span class="s-pill official">#4 Agentic Tool Design</span>
+      <span class="s-pill official">#5 Developer Productivity</span>
+      <span class="s-pill official">#6 Long Document Processing</span>
+      <span class="s-pill extended">#7 Claude for Operations</span>
+      <span class="s-pill extended">#8 CI/CD Integration</span>
+      <span class="s-pill extended">#9 Structured Data Extraction</span>
+      <span class="s-pill extended">#10 Conversational AI Patterns</span>
+      <span class="s-pill extended">#11 Enterprise Knowledge Mgmt</span>
+      <span class="s-pill extended">#12 Agent Skills — Dev Tooling</span>
+      <span class="s-pill extended">#13 Agent Skills — Code Execution</span>
+    </div>
+    <p style="font-size:12px;color:var(--muted)"><span class="badge b-green">Official</span> = in official guide &nbsp;|&nbsp; <span class="badge b-yellow">Extended</span> = community-confirmed, no practice coverage</p>
+
+    <h3>Passing Strategy</h3>
+    <div class="callout callout-info">
+      <strong>Think like an architect, not a test-taker.</strong> Every question is "Given this design, what's the flaw?" Study in order: D1 → D2 → D3+D4 → D5. Build working systems. The exam rewards people who have actually shipped LLM features.
+    </div>
+
+    <h3>Time Management Formula</h3>
+    <table>
+      <tr><th>Difficulty</th><th>% of questions</th><th>Count</th><th>Time budget</th></tr>
+      <tr><td>Easy</td><td>30%</td><td>18</td><td>1.5 min each = 27 min</td></tr>
+      <tr><td>Moderate</td><td>50%</td><td>30</td><td>2.0 min each = 60 min</td></tr>
+      <tr><td>Hard</td><td>20%</td><td>12</td><td>3.0 min each = 36 min</td></tr>
+      <tr><td colspan="3"><strong>Total</strong></td><td><strong>123 min (3 min review)</strong></td></tr>
+    </table>
+    <div class="callout callout-warn">If stuck &gt;2 min on any question: flag and move on. First instinct is usually right — don't flip answers at the end.</div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SECTION 1 ═══ -->
+<div class="section-card" id="s1">
+  <div class="section-head" onclick="toggleSection('s1')">
+    <span class="section-tag tag-1">§1</span>
+    <span class="section-title">Core Foundations — Applies to Every Scenario</span>
+    <span class="section-subtitle">API · Prompts · Claude Code · MCP · Agents · Safety</span>
+    <span class="chevron" id="chev-s1">▶</span>
+    <div class="section-check" id="chk-s1" onclick="event.stopPropagation();toggleCheck('s1')"></div>
+  </div>
+  <div class="section-body" id="body-s1">
+
+    <!-- 1.1 -->
+    <div class="subsection" id="s1-1">
+      <div class="sub-head" onclick="toggleSub('s1-1')">
+        <span class="chevron" id="chev-sub-s1-1">▶</span>
+        <span class="sub-title">1.1 Claude API Fundamentals</span>
+        <span class="badge b-red">D1 27%</span><span class="badge b-purple">D4 20%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s1-1">
+        <h4>Messages API Structure</h4>
+        <p>Claude is <strong>stateless</strong>. Every call gets: system prompt + full conversation history + current request. There is no server-side memory — you send everything, every time.</p>
+        <pre><code class="language-python">response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    system="You are a senior Java architect...",   # role, constraints, format
+    messages=[
+        {"role": "user",      "content": "..."},
+        {"role": "assistant", "content": "..."},   # history injected by you
+        {"role": "user",      "content": "..."},   # current turn
+    ]
+)</code></pre>
+        <div class="callout callout-danger"><strong>Exam trap:</strong> Tool results go in with <code>role="user"</code> NOT <code>role="tool"</code> or <code>role="assistant"</code>. This is the most-tested D1 detail.</div>
+
+        <h4>Streaming vs Non-Streaming</h4>
+        <table>
+          <tr><th>Use streaming when…</th><th>Use blocking when…</th></tr>
+          <tr><td>Web chat UI (React, browser)</td><td>Batch extraction pipelines</td></tr>
+          <tr><td>TTE (time-to-echo) matters for UX</td><td>Internal APIs, latency not visible</td></tr>
+          <tr><td>Long responses (avoid timeout)</td><td>Need complete response to parse JSON</td></tr>
+        </table>
+        <div class="callout callout-project"><strong>Project tie-in:</strong> <code>ConversationController.java</code> uses Spring Boot <code>SseEmitter</code> for token-by-token SSE delivery. Tokens are JSON-encoded (<code>objectMapper.writeValueAsString(token)</code>) because raw <code>\n</code> in SSE <code>data:</code> fields is treated as event separator — breaks newlines silently.</div>
+
+        <h4>Stop Sequences, Temperature, Top-P</h4>
+        <table>
+          <tr><th>Param</th><th>Exam relevance</th><th>Common mistake</th></tr>
+          <tr><td><code>temperature=0</code></td><td>Deterministic → extraction pipelines</td><td>Using temp to fix bad outputs (fix prompt instead)</td></tr>
+          <tr><td><code>stop_sequences</code></td><td>Cut off before tool recursion</td><td>Confusing with <code>tool_choice</code> constraints</td></tr>
+          <tr><td><code>max_tokens</code></td><td>Critical — prevents runaway agents</td><td>Too low cuts off; too high wastes cost</td></tr>
+          <tr><td><code>top_p</code></td><td>Rarely tested; prefer temperature</td><td>Mixing with temp without understanding interaction</td></tr>
+        </table>
+
+        <h4>Context Window Budget</h4>
+        <pre><code>Total window:          200K tokens (Claude 3.5 Sonnet / Haiku)
+System prompt:         ~500 tokens
+Tool descriptions:     ~300 tokens
+Reserved for response: ~4K tokens
+
+Available for history: ~195K tokens
+Practical budget:      ~195K × 0.85 = ~165K (leave safety margin)</code></pre>
+      </div>
+    </div>
+
+    <!-- 1.2 -->
+    <div class="subsection" id="s1-2">
+      <div class="sub-head" onclick="toggleSub('s1-2')">
+        <span class="chevron" id="chev-sub-s1-2">▶</span>
+        <span class="sub-title">1.2 Prompt Engineering for Production</span>
+        <span class="badge b-purple">D4 20%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s1-2">
+        <h4>System Prompt Layers</h4>
+        <pre><code>Layer 1: Role & Identity   → "You are a customer support specialist..."
+Layer 2: Task & Goal       → "Your goal is to resolve issues accurately..."
+Layer 3: Constraints       → "Never make refunds. Don't fabricate information."
+Layer 4: Output Format     → "Respond in this JSON: {...}"
+Layer 5: Few-shot (opt.)   → Only when task is genuinely ambiguous</code></pre>
+
+        <h4>Few-Shot Examples: When to Use</h4>
+        <ul class="trap-list">
+          <li class="good">Task is ambiguous — example clarifies edge cases</li>
+          <li class="good">Example prevents a specific common error</li>
+          <li class="good">You've measured it actually improves accuracy</li>
+          <li class="bad">Task is well-defined (translation, summarization)</li>
+          <li class="bad">Just adding examples "for safety" — costs tokens, adds noise</li>
+        </ul>
+
+        <h4>Prompt Injection Vectors &amp; Mitigations</h4>
+        <pre><code class="language-python"># DANGEROUS: user data bleeds into system authority
+system = f"Helping {username}. Data: {user_data}"
+
+# SAFE: clear boundary between system authority and user data
+system = "You are a helpful assistant."
+messages = [{"role": "user", "content": f"Context: {user_data}\n\nQuestion: ..."}]</code></pre>
+        <ul style="font-size:13px;margin-top:6px">
+          <li><strong>Document injection:</strong> Mark boundaries clearly. Never stuff full PDF into system prompt.</li>
+          <li><strong>Dynamic tool schemas:</strong> Pre-define all tools in code, never build from user input.</li>
+          <li><strong>Mitigation:</strong> Validate and sanitize anything entering context from external sources.</li>
+        </ul>
+
+        <h4>Forcing Deterministic JSON Output (D4 critical)</h4>
+        <pre><code class="language-python"># ❌ WRONG — system prompt "return JSON only" fails ~5% of time
+json.loads(response.content[0].text)
+
+# ✅ RIGHT — use tool_choice to structurally enforce schema
+response = client.messages.create(
+    tools=[{"name": "extract", "description": "...", "input_schema": {...}}],
+    tool_choice={"type": "tool", "name": "extract"},  # structural enforcement
+    messages=[...]
+)
+data = response.content[0].input  # always valid JSON, schema-guaranteed</code></pre>
+        <div class="callout callout-tip"><strong>Key insight:</strong> <code>tool_choice</code> enforcement &gt; system prompt instructions. System prompts are prose (Claude can drift). Tool choice is structural (Claude can't bypass it).</div>
+
+        <h4>Validation Retry Loop (Not Blind Retry)</h4>
+        <pre><code class="language-python">for attempt in range(3):
+    response = claude.extract_json(prompt)
+    try:
+        data = json.loads(response)
+        validate_schema(data)
+        return data
+    except (json.JSONDecodeError, ValidationError) as e:
+        if attempt < 2:
+            prompt += f"\n\nPrevious attempt failed: {e}\nFix and retry."
+        else:
+            raise  # escalate after 3 attempts</code></pre>
+        <div class="callout callout-warn">Tell Claude <em>what broke</em>. Blind retries with identical prompts produce identical failures.</div>
+      </div>
+    </div>
+
+    <!-- 1.3 -->
+    <div class="subsection" id="s1-3">
+      <div class="sub-head" onclick="toggleSub('s1-3')">
+        <span class="chevron" id="chev-sub-s1-3">▶</span>
+        <span class="sub-title">1.3 Claude Code — Agentic CLI</span>
+        <span class="badge b-green">D3 20%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s1-3">
+        <h4>What It Is (Not Just Autocomplete)</h4>
+        <p>Claude Code is a full <strong>agentic loop</strong> in a CLI. It reads files, edits code, runs shell commands, and iterates — not just autocomplete. It uses CLAUDE.md as "project memory".</p>
+
+        <h4>CLAUDE.md Hierarchy (highest priority first)</h4>
+        <pre><code>1. .claude/commands/{cmd}.md  — command-specific frontmatter overrides
+2. {module}/.claude/CLAUDE.md — module-level (e.g. frontend/)
+3. ./CLAUDE.md                — project root (this project's CLAUDE.md)
+4. ~/.claude/CLAUDE.md        — user global defaults</code></pre>
+        <div class="callout callout-project"><strong>This project's CLAUDE.md</strong> is a live example: it lists build commands, ADRs, key constraints (never edit applied Flyway migrations, BIT(1) for booleans, etc.). That's what a production CLAUDE.md looks like.</div>
+
+        <h4>What Belongs in CLAUDE.md</h4>
+        <pre><code># CLAUDE.md
+## Build Commands
+- `./gradlew.bat bootRun` — start Spring Boot locally
+- `npm run dev`            — admin-ui dev server on :3000
+
+## Key Constraints
+- Never edit applied Flyway migrations (V1–V5 are locked)
+- BIT(1) not TINYINT for boolean columns (Hibernate 6 / MySQL8Dialect)
+- JWT secret must be Base64-encoded, ≥256 bits
+
+## Architecture
+Spring Boot (:8080) → nginx proxy (:8081) → OpenRouter → MySQL (:3309)</code></pre>
+
+        <h4>Custom Slash Commands</h4>
+        <pre><code class="language-yaml">--- # .claude/commands/review.md
+description: "Pre-landing code review"
+allowed-tools:
+  - read
+  - grep
+  - diff
+model: claude-sonnet-4-6   # can override per command
+---
+
+Review the changed files. Check SQL safety, auth gaps, lazy loading...
+Use $ARGUMENTS for target path.</code></pre>
+
+        <h4>Hooks (Structural Safety Gates)</h4>
+        <pre><code class="language-bash">#!/bin/bash
+# .claude/hooks/guard-destructive.sh — wired to PreWriteFile
+if [[ "$1" =~ ^rm\ -rf ]]; then
+  echo "BLOCKED: Destructive command. Ask user first." && exit 1
+fi</code></pre>
+        <div class="callout callout-warn"><strong>Exam trap:</strong> CLAUDE.md is guidance, not enforcement. Hooks (PreWriteFile, PostToolUse) are enforcement. A constraint that "must never" happen needs a hook, not just CLAUDE.md text.</div>
+
+        <h4>Claude Code in CI/CD (Non-Interactive)</h4>
+        <pre><code class="language-bash"># GitHub Actions — headless mode
+- name: Claude Code Review
+  run: |
+    claude -p --allowedTools=read,grep,diff &lt;&lt; 'EOF'
+    Review PR files for SQL injection risks and missing auth checks.
+    Files: ${{ github.event.pull_request.files }}
+    EOF</code></pre>
+        <ul class="trap-list">
+          <li class="bad"><code>--allowedTools=*</code> in CI for convenience — dangerous, grants everything</li>
+          <li class="good">Minimal explicit whitelist: <code>--allowedTools=read,grep</code></li>
+          <li class="good">Hooks as safety gates even in CI</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 1.4 -->
+    <div class="subsection" id="s1-4">
+      <div class="sub-head" onclick="toggleSub('s1-4')">
+        <span class="chevron" id="chev-sub-s1-4">▶</span>
+        <span class="sub-title">1.4 Model Context Protocol (MCP)</span>
+        <span class="badge b-blue">D2 18%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s1-4">
+        <h4>Architecture</h4>
+        <pre><code>Claude (client) ←── JSON-RPC over stdio / HTTP ──→ MCP Server
+                                                    (GitHub, Jira, your API)
+
+Tool:     Claude can CHANGE STATE (create issue, write file)
+Resource: Claude can READ/REFERENCE (codebase, wiki page)</code></pre>
+
+        <h4>Tool Schema Golden Rules</h4>
+        <pre><code class="language-json">{
+  "name": "search_documents",         // verb_object convention
+  "description": "Search internal docs by keyword. Returns snippets matching query.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search keywords (e.g. 'rate limiting strategy')"
+      },
+      "region": {
+        "type": "string",
+        "enum": ["NORTH","SOUTH","EAST","WEST"],  // enums > free strings
+        "description": "Geographic filter"
+      }
+    },
+    "required": ["query"]  // explicit, never rely on defaults
+  }
+}</code></pre>
+        <div class="callout callout-project"><strong>Project tie-in:</strong> <code>PUT /api/user/models/{id}/toggle</code> uses integer PK, not string modelId. Model IDs contain <code>/</code> (e.g. <code>meta-llama/llama-3.3-70b:free</code>). Tomcat normalizes <code>%2F</code> before Spring MVC sees it — design tools around transport constraints.</div>
+
+        <h4>tool_choice Values (Critical)</h4>
+        <table>
+          <tr><th>Value</th><th>Behavior</th><th>Use case</th></tr>
+          <tr><td><code>"auto"</code></td><td>Claude MAY or MAY NOT use tools</td><td>Open-ended tasks</td></tr>
+          <tr><td><code>"any"</code></td><td>Claude MUST use at least one tool</td><td>Force tool invocation</td></tr>
+          <tr><td><code>{"type":"tool","name":"X"}</code></td><td>Claude MUST use tool X only</td><td>Structured extraction, forced schema</td></tr>
+        </table>
+        <div class="callout callout-danger"><strong>Exam trap:</strong> "auto" and "any" are NOT the same. "auto" = optional. "any" = forced. For extraction pipelines: always <code>{"type":"tool","name":"extract"}</code>, not "any".</div>
+
+        <h4>MCP Config Scoping</h4>
+        <pre><code># Priority order (higher = wins)
+1. .mcp.json (project root)    ← project-specific tools
+2. ~/.claude.json (user global) ← shared tools (GitHub, Slack)
+
+# Credentials — never hardcode
+{
+  "tools": {
+    "github": { "token": "${GH_TOKEN}" }  // ✅ env var
+  }
+}
+// NOT: "token": "ghp_abc123..."           // ❌ hardcoded = security breach</code></pre>
+
+        <h4>Tool Count Limit</h4>
+        <div class="callout callout-warn"><strong>Recommended: 4–5 tools per MCP server.</strong> Each tool description consumes tokens. At ~20+ tools, Claude's ability to pick the right one degrades. Solution: split into multiple domain-specific servers (mcp-github, mcp-jira, mcp-internal).</div>
+
+        <h4>Error Contract in Tool Results</h4>
+        <pre><code class="language-json">{
+  "type": "tool_result",
+  "tool_use_id": "tool_abc123",
+  "content": "Error: DB timeout. Index rebuilding. Retry in 60s or use cached list.",
+  "is_error": true
+}
+// is_error=true + transient message → Claude knows it CAN retry
+// is_error=true + "Invalid API key" → Claude knows it CANNOT retry</code></pre>
+      </div>
+    </div>
+
+    <!-- 1.5 -->
+    <div class="subsection" id="s1-5">
+      <div class="sub-head" onclick="toggleSub('s1-5')">
+        <span class="chevron" id="chev-sub-s1-5">▶</span>
+        <span class="sub-title">1.5 Agentic Patterns — ReAct, Orchestration, Failure</span>
+        <span class="badge b-red">D1 27%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s1-5">
+        <h4>The Core ReAct Loop (stop_reason is the key)</h4>
+        <pre><code class="language-python">messages = [{"role": "user", "content": user_input}]
+
+while True:
+    response = client.messages.create(
+        model="claude-sonnet-4-6", max_tokens=1024,
+        system=system_prompt, tools=tools, messages=messages
+    )
+
+    if response.stop_reason == "end_turn":
+        return extract_text(response.content)  # done
+
+    elif response.stop_reason == "tool_use":
+        # Step 1: append Claude's response (with tool_use blocks)
+        messages.append({"role": "assistant", "content": response.content})
+
+        # Step 2: call each tool, append results
+        for block in response.content:
+            if block.type == "tool_use":
+                result = dispatch_tool(block.name, block.input)
+                messages.append({
+                    "role": "user",           # ← CRITICAL: role="user" not "tool"
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": str(result),
+                        "is_error": isinstance(result, Exception)
+                    }]
+                })
+        # loop back to get next response
+
+    else:
+        raise RuntimeError(f"Unexpected stop_reason: {response.stop_reason}")</code></pre>
+
+        <h4>Sequential vs Parallel Tool Calls</h4>
+        <pre><code># SERIAL — Claude issues tools one at a time (slow if independent)
+# Tool A → wait → Tool B → wait → Total: sum of latencies
+
+# PARALLEL — Claude issues multiple tool_use blocks in one response
+# response.content = [tool_use_A, tool_use_B, tool_use_C]
+# You call ALL THREE, then append ALL results, then loop back
+# Total: max of individual latencies (not sum)</code></pre>
+        <p style="font-size:13px">Prompt Claude for parallel behavior: <em>"You have tools X, Y, Z. Call all of them simultaneously to resolve this quickly."</em></p>
+
+        <h4>Multi-Agent Hub-and-Spoke</h4>
+        <pre><code>          [Orchestrator]  — plans, delegates, aggregates
+          /      |       \
+    [Research] [Analyst] [Writer]
+    subagent 1  subagent 2  subagent 3
+    (search     (compute    (format
+     tools)      tools)      tools)
+
+Rules:
+✓ Orchestrator delegates via messages, not tool exposure
+✓ Subagents have isolated context — don't see each other
+✓ Subagents don't call each other (creates loops)
+✗ Orchestrator does NOT have all subagent tools (defeats isolation)</code></pre>
+
+        <h4>Failure Recovery Strategy</h4>
+        <table>
+          <tr><th>Failure</th><th>Wrong approach</th><th>Right approach</th></tr>
+          <tr><td>Tool timeout</td><td>Immediate retry (hung tool stays hung)</td><td>Mark as failed, continue with partial info</td></tr>
+          <tr><td>Auth error</td><td>Retry (won't fix itself)</td><td>Fail gracefully, surface to user</td></tr>
+          <tr><td>High-value decision</td><td>Let agent guess</td><td>Escalate to human with context</td></tr>
+          <tr><td>Repeated failure</td><td>Loop forever</td><td>Circuit breaker: stop after N failures</td></tr>
+        </table>
+
+        <h4>When NOT to Use an Agent</h4>
+        <ul style="font-size:13px">
+          <li>A single well-prompted API call is sufficient (agent adds latency, cost, complexity)</li>
+          <li>Task is deterministic and stateless (no iteration needed)</li>
+          <li>Blast radius of autonomous actions is too high (ops/production changes)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 1.6 -->
+    <div class="subsection" id="s1-6">
+      <div class="sub-head" onclick="toggleSub('s1-6')">
+        <span class="chevron" id="chev-sub-s1-6">▶</span>
+        <span class="sub-title">1.6 Safety, Reliability &amp; Security</span>
+        <span class="badge b-yellow">D5 15%</span><span class="badge b-red">D1 27%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s1-6">
+        <h4>Rate Limiting Strategy (Project Reference)</h4>
+        <pre><code>Global limit:              "500 req/day total" — one user burns all quota
+Per-user limit:            "50 req/day per user" — fair but unlimited tokens
+Per-user + token budget:   "50 req/day + 1M tokens/day per user" — correct model
+Per-user + model-specific: "50 calls/day to Opus, 200 to Haiku" — cost gates</code></pre>
+        <div class="callout callout-project"><strong>This project:</strong> Bucket4j token-bucket per-user sliding window. Two separate limits: <code>request_count</code> (checked pre-call) and <code>token_count</code> (checked post-call). Request limit is pre-call because tokens are unknown before completion.</div>
+
+        <h4>Audit Logging (What to Capture)</h4>
+        <pre><code>Every LLM call must log:
+1. WHO:     user_id, API key hash (never plaintext key)
+2. WHAT:    model, system_prompt_hash, input_tokens
+3. WHEN:    timestamp (UTC)
+4. OUTCOME: stop_reason, output_tokens, cost_usd
+5. TOOLS:   list of tools invoked (if any)</code></pre>
+        <div class="callout callout-project"><strong>This project's <code>chat_logs</code> table:</strong> captures user_id, model, tokens_input, tokens_output, status, response_preview. Flyway-managed schema — versioned, auditable.</div>
+
+        <h4>Graceful Degradation Tiers</h4>
+        <pre><code>Tier 1 (User error):     Invalid input → clear error to user
+Tier 2 (Service error):  DB timeout → retry 3x, then fail gracefully
+Tier 3 (LLM down):       API unavailable → serve cached response or queue
+Tier 4 (Budget exceeded): Rate limit hit → explain limit, reset time, next steps</code></pre>
+
+        <h4>AES-GCM vs BCrypt — Know the Difference</h4>
+        <table>
+          <tr><th>Algorithm</th><th>Use for</th><th>Why</th></tr>
+          <tr><td>BCrypt</td><td>Passwords (one-way)</td><td>Verify only, never recover. Attacker can't decrypt even with key.</td></tr>
+          <tr><td>AES-GCM</td><td>API keys (reversible)</td><td>Must decrypt to use. BCrypt here = keys permanently unusable.</td></tr>
+        </table>
+        <div class="callout callout-project"><strong>This project:</strong> <code>ENCRYPTION_MASTER_KEY</code> (64-char hex = 32 bytes) encrypts OpenRouter API keys via AES-GCM. Never returns plaintext via HTTP — decrypted in-process only at request time.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SECTION 2 ═══ -->
+<div class="section-card" id="s2">
+  <div class="section-head" onclick="toggleSection('s2')">
+    <span class="section-tag tag-2">§2</span>
+    <span class="section-title">Scenario Deep-Dives — All 13</span>
+    <span class="section-subtitle">What the system does · Key decisions · Trade-offs · Gotchas · Project tie-ins</span>
+    <span class="chevron" id="chev-s2">▶</span>
+    <div class="section-check" id="chk-s2" onclick="event.stopPropagation();toggleCheck('s2')"></div>
+  </div>
+  <div class="section-body" id="body-s2">
+
+    <!-- 2.1 -->
+    <div class="subsection" id="s2-1">
+      <div class="sub-head" onclick="toggleSub('s2-1')">
+        <span class="chevron" id="chev-sub-s2-1">▶</span>
+        <span class="sub-title">2.1 Customer Support Resolution Agent</span>
+        <span class="badge b-green">Official</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-1">
+        <p><strong>System:</strong> Inbound customer messages → intent classification → routing → response generation → optional human escalation.</p>
+        <h4>Key Design Decisions</h4>
+        <ul>
+          <li><strong>Multi-turn memory:</strong> Stateless API + external store. See <code>conversations</code> + <code>conversation_messages</code> tables — same pattern.</li>
+          <li><strong>Escalation triggers:</strong> Confidence threshold below X%; negative sentiment detected; topic outside KB; customer explicitly requests human.</li>
+          <li><strong>Tools:</strong> <code>lookup_customer(id)</code>, <code>search_knowledge_base(query)</code>, <code>create_ticket(customer_id, summary)</code>, <code>check_order_status(order_id)</code></li>
+        </ul>
+        <h4>Trade-offs</h4>
+        <table>
+          <tr><th>Decision</th><th>Trade-off</th></tr>
+          <tr><td>Parallel tool calls (lookup + KB search)</td><td>Lower latency, but harder to debug partial failures</td></tr>
+          <tr><td>Always escalate after 3 failed attempts</td><td>Safer UX, but increases human load</td></tr>
+          <tr><td>Sliding window for history</td><td>Simple, but forgets long-running issue context</td></tr>
+        </table>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Don't conflate "response sent" with "issue resolved". Measure outcomes (resolution rate, CSAT, re-open rate) not output (response sent). An agent that always sends a response with 0% resolution is worse than nothing.</div>
+        <div class="callout callout-project"><strong>Project:</strong> Conversation threading (<code>conversations</code> + <code>conversation_messages</code>) + per-model rate limiting directly maps to multi-turn support agent architecture.</div>
+      </div>
+    </div>
+
+    <!-- 2.2 -->
+    <div class="subsection" id="s2-2">
+      <div class="sub-head" onclick="toggleSub('s2-2')">
+        <span class="chevron" id="chev-sub-s2-2">▶</span>
+        <span class="sub-title">2.2 Code Generation with Claude Code</span>
+        <span class="badge b-green">Official</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-2">
+        <p><strong>System:</strong> Claude Code agentic CLI operates on a real codebase — plan → implement → test → iterate.</p>
+        <h4>Key Design Decisions</h4>
+        <ul>
+          <li><strong>CLAUDE.md as contract:</strong> Defines what Claude can/can't do. Constraints in CLAUDE.md are stronger than ad-hoc prompts — Claude reads it at session start and respects it throughout.</li>
+          <li><strong>Permission model:</strong> <code>allowed-tools</code> in command frontmatter whitelists which tools the agent can use. Never wildcard in production.</li>
+          <li><strong>Diff review gate:</strong> Never blindly accept generated code. Always review diff before apply. Hooks can enforce this (PostToolUse to display diff).</li>
+        </ul>
+        <h4>CI Integration Pattern</h4>
+        <pre><code class="language-yaml">- name: Claude Code Review
+  run: |
+    claude -p --allowedTools=read,grep,diff &lt;&lt;'EOF'
+    Review changed files. Flag: SQL injection, missing auth, N+1 queries.
+    Files: ${{ github.event.pull_request.changed_files }}
+    EOF</code></pre>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Agents accumulate context — long sessions drift. CLAUDE.md constraints can weaken as context grows. Start fresh context for fresh tasks. Don't let one session span 50 iterations.</div>
+      </div>
+    </div>
+
+    <!-- 2.3 -->
+    <div class="subsection" id="s2-3">
+      <div class="sub-head" onclick="toggleSub('s2-3')">
+        <span class="chevron" id="chev-sub-s2-3">▶</span>
+        <span class="sub-title">2.3 Multi-Agent Research System</span>
+        <span class="badge b-green">Official</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-3">
+        <p><strong>System:</strong> Orchestrator fans out to N specialist subagents in parallel, aggregates and synthesizes results.</p>
+        <h4>Architecture Pattern</h4>
+        <pre><code>Orchestrator: plan → delegate → aggregate → synthesize
+  ├─ Researcher-1: search_web(topic_A) + fetch_url(source_A)
+  ├─ Researcher-2: search_web(topic_B) + fetch_url(source_B)
+  └─ Analyst:      analyze_data(datasets) + run_query(sql)</code></pre>
+        <h4>Critical Rules</h4>
+        <ul>
+          <li><strong>Trust boundary:</strong> Treat subagent output as untrusted input to orchestrator. Validate and cross-check. A subagent can hallucinate citations.</li>
+          <li><strong>Deduplication:</strong> Multiple researchers may find same source. Hash-based dedup before synthesis.</li>
+          <li><strong>Citation integrity:</strong> Always verify URLs exist before presenting as cited sources.</li>
+        </ul>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Serial subagent chains multiply latency. Design for parallelism from the start — retrofitting is hard. If subagent A must finish before B starts, ask if B actually depends on A's result or just happens to run second.</div>
+        <div class="callout callout-warn"><strong>Exam trap:</strong> Orchestrator should NOT expose subagent tools to avoid confusion and context bloat. Orchestrator delegates via messages; subagents execute and report back.</div>
+      </div>
+    </div>
+
+    <!-- 2.4 -->
+    <div class="subsection" id="s2-4">
+      <div class="sub-head" onclick="toggleSub('s2-4')">
+        <span class="chevron" id="chev-sub-s2-4">▶</span>
+        <span class="sub-title">2.4 Agentic Tool Design</span>
+        <span class="badge b-green">Official</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-4">
+        <h4>Tool Design Checklist</h4>
+        <ul>
+          <li><strong>Naming:</strong> <code>verb_object</code> convention. <code>search_documents</code> not <code>doSearch</code> or <code>findDocsByKeyword</code>.</li>
+          <li><strong>Description:</strong> Written for the model, not humans. Include what it returns: "Returns document snippets matching query." Not "This tool searches things."</li>
+          <li><strong>Schema:</strong> Strict types. Enums over free strings. Explicit <code>required</code> array. No vague <code>"type":"any"</code>.</li>
+          <li><strong>Idempotency:</strong> State-mutating tools (create, delete) must be safe to retry. HTTP PUT > HTTP POST for idempotency.</li>
+          <li><strong>Error responses:</strong> Structured, actionable, not generic. <code>"Error: DB timeout. Retry after 60s."</code> not <code>"Error"</code>.</li>
+        </ul>
+        <div class="callout callout-project"><strong>Project tie-in:</strong> <code>PUT /api/user/models/{id}/toggle</code> — integer PK in path instead of string model ID. Why? Model IDs contain <code>/</code>; Tomcat normalizes URL-encoded slashes before Spring MVC routing. This is production agentic tool design — always design around transport constraints, not just business logic.</div>
+        <h4>Idempotency Pattern</h4>
+        <pre><code class="language-sql">-- Atomic upsert for toggle (this project's implementation)
+INSERT INTO user_model_preferences (user_id, model_id, enabled)
+VALUES (?, ?, TRUE)
+ON DUPLICATE KEY UPDATE enabled = NOT enabled;
+-- Race-condition-safe: no load-then-store pattern</code></pre>
+      </div>
+    </div>
+
+    <!-- 2.5 -->
+    <div class="subsection" id="s2-5">
+      <div class="sub-head" onclick="toggleSub('s2-5')">
+        <span class="chevron" id="chev-sub-s2-5">▶</span>
+        <span class="sub-title">2.5 Developer Productivity with Claude</span>
+        <span class="badge b-green">Official</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-5">
+        <p><strong>System:</strong> Code review automation, codebase Q&amp;A (RAG), documentation generation.</p>
+        <h4>Key Patterns</h4>
+        <ul>
+          <li><strong>Codebase RAG:</strong> Embed codebase → store in vector DB → retrieve relevant chunks → generate answer. Quality of retrieval determines quality of answer.</li>
+          <li><strong>Code review:</strong> Claude can catch: SQL injection, missing null checks, N+1 queries, hardcoded secrets, missing auth. Cannot replace human judgment for: business logic correctness, UX decisions, architectural trade-offs.</li>
+          <li><strong>Choosing surface:</strong> IDE extension for inline suggestions, Claude Code CLI for multi-file refactors, API directly for CI pipeline automation.</li>
+        </ul>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Claude's knowledge of your codebase is only as fresh as what you give it. Stale context = stale answers. For large codebases, retrieval-augmented approaches beat stuffing everything in context.</div>
+      </div>
+    </div>
+
+    <!-- 2.6 -->
+    <div class="subsection" id="s2-6">
+      <div class="sub-head" onclick="toggleSub('s2-6')">
+        <span class="chevron" id="chev-sub-s2-6">▶</span>
+        <span class="sub-title">2.6 Long Document Processing</span>
+        <span class="badge b-green">Official</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-6">
+        <p><strong>System:</strong> Process documents too large for one context window. Chunking + map-reduce pattern.</p>
+        <h4>Chunking Strategies</h4>
+        <table>
+          <tr><th>Strategy</th><th>When to use</th><th>Gotcha</th></tr>
+          <tr><td>Fixed-size (512 tokens)</td><td>Uniform documents, quick setup</td><td>Splits mid-sentence, loses context at boundaries</td></tr>
+          <tr><td>Semantic (paragraph/section)</td><td>Structured documents (contracts, reports)</td><td>Uneven chunk sizes complicate batching</td></tr>
+          <tr><td>Hierarchical (chapter → section → para)</td><td>Long-form content with clear structure</td><td>Complex to implement, hard to preserve cross-chunk entities</td></tr>
+        </table>
+        <h4>Map-Reduce Pattern</h4>
+        <pre><code>Map phase:    [chunk_1, chunk_2, ... chunk_N] → parallel summaries
+Reduce phase: summaries → synthesize into final output</code></pre>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Claude reads the whole context window every call. Stuffing a 150K-token document pushes your system prompt and conversation to the edges of the window. Claude's attention degrades on content in the middle of very long contexts ("lost in the middle" effect).</div>
+        <div class="callout callout-tip">For retrieval vs. stuffing: if the user's question is answered by a small portion of the document, retrieve → generate. Only stuff if you need global understanding of the entire document.</div>
+      </div>
+    </div>
+
+    <!-- 2.7 -->
+    <div class="subsection" id="s2-7">
+      <div class="sub-head" onclick="toggleSub('s2-7')">
+        <span class="chevron" id="chev-sub-s2-7">▶</span>
+        <span class="sub-title">2.7 Claude for Operations</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-7">
+        <p><strong>System:</strong> On-call assistant — alert triage, runbook automation, remediation suggestions.</p>
+        <h4>Key Patterns</h4>
+        <ul>
+          <li><strong>Alert triage:</strong> Classify severity → suggest remediation → escalate with context</li>
+          <li><strong>Runbook tools:</strong> <code>query_metrics(service, time_range)</code>, <code>read_logs(pod, lines)</code>, <code>trigger_rollback(deployment_id)</code></li>
+          <li><strong>Safety gate (critical):</strong> Destructive ops (rollback, restart, scale-to-zero) require explicit human confirmation before execution. Never autonomous.</li>
+        </ul>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Ops agents need strict output validation — a hallucinated <code>kubectl delete pod</code> command is dangerous. Never execute LLM-generated shell commands without validation and human review. Parse intent, not raw output.</div>
+      </div>
+    </div>
+
+    <!-- 2.8 -->
+    <div class="subsection" id="s2-8">
+      <div class="sub-head" onclick="toggleSub('s2-8')">
+        <span class="chevron" id="chev-sub-s2-8">▶</span>
+        <span class="sub-title">2.8 Claude Code for Continuous Integration</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-8">
+        <p><strong>System:</strong> Non-interactive Claude Code in CI pipelines — code review, security scanning, automated fixes.</p>
+        <h4>Non-Interactive Mode</h4>
+        <pre><code class="language-bash">claude -p \                          # print mode: output to stdout
+  --allowedTools=read,grep,bash \    # minimal whitelist
+  --timeout 120 \                    # CI has hard time limits
+  "Review this PR for SQL injection risks"</code></pre>
+        <h4>CI Safety Rules</h4>
+        <ul class="trap-list">
+          <li class="bad">Wildcard tools: <code>--allowedTools=*</code></li>
+          <li class="bad">Write permission without human gate</li>
+          <li class="good">Read-only by default; explicit write grants</li>
+          <li class="good">Hooks guard destructive patterns even in CI</li>
+          <li class="good">Fail pipeline on critical finding; warn on medium</li>
+          <li class="good">Set <code>max_tokens</code> budget to prevent runaway costs</li>
+        </ul>
+        <div class="callout callout-project"><strong>This project's Phase 5 roadmap:</strong> GitHub Actions CI/CD pipeline. Would use <code>--allowedTools=read,grep</code> for security review, with explicit write grants only for auto-fix of formatting.</div>
+      </div>
+    </div>
+
+    <!-- 2.9 -->
+    <div class="subsection" id="s2-9">
+      <div class="sub-head" onclick="toggleSub('s2-9')">
+        <span class="chevron" id="chev-sub-s2-9">▶</span>
+        <span class="sub-title">2.9 Structured Data Extraction</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-9">
+        <h4>The Right Pattern</h4>
+        <pre><code class="language-python">response = client.messages.create(
+    tools=[{
+        "name": "save_contacts",
+        "description": "Save extracted customer contact data",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name":  {"type": "string"},
+                            "email": {"type": "string", "format": "email"},
+                            "phone": {"type": "string"}
+                        },
+                        "required": ["name", "email"]
+                    }
+                }
+            },
+            "required": ["contacts"]
+        }
+    }],
+    tool_choice={"type": "tool", "name": "save_contacts"},  # force it
+    messages=[{"role": "user", "content": document_text}]
+)
+contacts = response.content[0].input["contacts"]  # always valid JSON</code></pre>
+        <h4>Handling Ambiguity</h4>
+        <ul>
+          <li>Field unclear in source → return <code>null</code>, not a guess</li>
+          <li>Add <code>confidence</code> field (0.0–1.0) for downstream routing</li>
+          <li>Low confidence → route to human review queue</li>
+          <li>Batch: process records in parallel, isolate failures per-record</li>
+        </ul>
+        <div class="callout callout-project"><strong>Project tie-in:</strong> <code>chat_logs</code> table is an extraction target contract — Flyway schema as the JSON schema analog. MarkdownNormalizer extracts structured content from raw LLM output for storage.</div>
+      </div>
+    </div>
+
+    <!-- 2.10 -->
+    <div class="subsection" id="s2-10">
+      <div class="sub-head" onclick="toggleSub('s2-10')">
+        <span class="chevron" id="chev-sub-s2-10">▶</span>
+        <span class="sub-title">2.10 Conversational AI Patterns</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-10">
+        <p><strong>System:</strong> Multi-turn chat with session management, context budget, persona consistency.</p>
+        <h4>Session Management Architecture</h4>
+        <pre><code>Stateless API + external session store (DB / Redis)
+
+Client → Spring Boot → Load conversation history → Claude API → Stream back → Save message
+
+Pattern used in this project:
+  POST /api/conversations/{id}/messages/stream
+  → ConversationService.getHistory(id)
+  → OpenRouterClient.stream(messages)
+  → SSE token delivery
+  → ConversationMessage saved</code></pre>
+        <h4>Context Strategies by Scenario</h4>
+        <table>
+          <tr><th>Strategy</th><th>Best for</th><th>Risk</th></tr>
+          <tr><td>Sliding window (last N messages)</td><td>Customer support (short-lived)</td><td>Forgets early context</td></tr>
+          <tr><td>Hierarchical (facts + recent)</td><td>Long-running agents, research</td><td>Complex to maintain</td></tr>
+          <tr><td>Periodic summarization</td><td>Weekly sessions, coaching bots</td><td>Summary may lose nuance</td></tr>
+        </table>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Don't let conversation history grow unbounded. Implement a strategy from the first deploy, not when you hit the context window limit in production.</div>
+      </div>
+    </div>
+
+    <!-- 2.11 -->
+    <div class="subsection" id="s2-11">
+      <div class="sub-head" onclick="toggleSub('s2-11')">
+        <span class="chevron" id="chev-sub-s2-11">▶</span>
+        <span class="sub-title">2.11 Agent Skills — Enterprise Knowledge Management</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-11">
+        <p><strong>System:</strong> RAG pipeline over internal knowledge — SharePoint, Confluence, Slack, wikis.</p>
+        <h4>RAG Pipeline</h4>
+        <pre><code>Ingestion:  Crawl sources → chunk → embed → store in vector DB
+Query:      User question → embed → similarity search → retrieve top-K
+Generation: Retrieved chunks + question → Claude → answer with citations</code></pre>
+        <h4>Critical Issues</h4>
+        <ul>
+          <li><strong>Access control:</strong> Retrieved context must respect source permissions. If user can't see document, don't retrieve it into their context.</li>
+          <li><strong>Freshness:</strong> Embeddings go stale. Define an index update strategy: full re-embed weekly, incremental updates on change.</li>
+          <li><strong>Multi-source fusion:</strong> Conflicting facts from different sources — surface both, let user decide.</li>
+        </ul>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Retrieval quality determines answer quality. Garbage embeddings → garbage answers. Most RAG failures are retrieval failures, not generation failures. Test retrieval in isolation first.</div>
+      </div>
+    </div>
+
+    <!-- 2.12 -->
+    <div class="subsection" id="s2-12">
+      <div class="sub-head" onclick="toggleSub('s2-12')">
+        <span class="chevron" id="chev-sub-s2-12">▶</span>
+        <span class="sub-title">2.12 Agent Skills — Developer Tooling</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-12">
+        <p><strong>System:</strong> MCP servers wrapping internal developer tools — JIRA, GitHub, CI systems.</p>
+        <h4>Key Patterns</h4>
+        <ul>
+          <li><strong>OAuth delegation:</strong> MCP server requests token on behalf of user. Never hardcode service account tokens that bypass user permissions.</li>
+          <li><strong>Tool composition:</strong> Agent chains: search_issues → get_issue_detail → create_pr → link_pr_to_issue. Each tool is atomic; agent chains them.</li>
+          <li><strong>Tool count:</strong> Keep each MCP server focused (4–5 tools). Split by domain: mcp-github (issues, PRs), mcp-jira (tickets, sprints), mcp-ci (builds, deployments).</li>
+        </ul>
+        <div class="callout callout-project"><strong>This project's environment:</strong> Jira MCP connector is available. Real example of an MCP server wrapping an internal API with auth delegation and bounded tool surface.</div>
+      </div>
+    </div>
+
+    <!-- 2.13 -->
+    <div class="subsection" id="s2-13">
+      <div class="sub-head" onclick="toggleSub('s2-13')">
+        <span class="chevron" id="chev-sub-s2-13">▶</span>
+        <span class="sub-title">2.13 Agent Skills — Code Execution</span>
+        <span class="badge b-yellow">Extended</span>
+      </div>
+      <div class="sub-body" id="body-sub-s2-13">
+        <p><strong>System:</strong> Agent generates and executes code. Sandbox is critical.</p>
+        <h4>Security Requirements</h4>
+        <ul class="trap-list">
+          <li class="bad">Execute untrusted code in host environment (RCE risk)</li>
+          <li class="bad">Allow pip/npm install (supply chain risk)</li>
+          <li class="bad">Unrestricted filesystem/network access in sandbox</li>
+          <li class="good">Isolated container per execution (Docker, gVisor, Firecracker)</li>
+          <li class="good">Read-only filesystem except declared output dirs</li>
+          <li class="good">Network egress blocked or limited to allowlist</li>
+          <li class="good">CPU/memory/time hard limits per execution</li>
+          <li class="good">Declare allowed languages/runtimes; reject others</li>
+        </ul>
+        <h4>Output Capture Pattern</h4>
+        <pre><code class="language-python">result = sandbox.run(
+    code=block.input["code"],
+    language=block.input["language"],
+    timeout_s=30,
+    max_memory_mb=512
+)
+tool_result = {
+    "stdout": result.stdout[:5000],  # cap output size
+    "stderr": result.stderr[:1000],
+    "exit_code": result.exit_code,
+    "truncated": result.truncated
+}</code></pre>
+        <div class="callout callout-danger"><strong>Gotcha:</strong> Agents will attempt to install packages (<code>pip install requests</code>, <code>npm install lodash</code>). These must be blocked at the sandbox level, not just by prompt instruction.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SECTION 3 ═══ -->
+<div class="section-card" id="s3">
+  <div class="section-head" onclick="toggleSection('s3')">
+    <span class="section-tag tag-3">§3</span>
+    <span class="section-title">Hands-On Checklist</span>
+    <span class="section-subtitle">Build these — the exam tests judgment built from doing, not reading</span>
+    <span class="chevron" id="chev-s3">▶</span>
+    <div class="section-check" id="chk-s3" onclick="event.stopPropagation();toggleCheck('s3')"></div>
+  </div>
+  <div class="section-body" id="body-s3">
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Check each exercise as you complete it. Progress is saved in your browser.</p>
+    <ul class="checklist" id="checklist-exercises">
+      <li class="check-item">
+        <input type="checkbox" id="ex1" onchange="saveCheck('ex1',this.checked)">
+        <label for="ex1"><strong>Exercise 1:</strong> Build a working ReAct agent with ≥2 tools (e.g. calculator + search). Verify all stop_reason handling paths: <code>end_turn</code>, <code>tool_use</code>, unexpected.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex2" onchange="saveCheck('ex2',this.checked)">
+        <label for="ex2"><strong>Exercise 2:</strong> Design an MCP server with 3+ tools. Test description quality: ask Claude to pick the right tool given an ambiguous request. Verify it picks correctly.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex3" onchange="saveCheck('ex3',this.checked)">
+        <label for="ex3"><strong>Exercise 3:</strong> Set up Claude Code in a real project with CLAUDE.md, a custom slash command (<code>allowed-tools</code> whitelist), and a PreWriteFile hook. Run a multi-step refactor.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex4" onchange="saveCheck('ex4',this.checked)">
+        <label for="ex4"><strong>Exercise 4:</strong> Wire Claude Code into a CI pipeline (GitHub Actions or pre-commit hook). Use <code>--allowedTools</code> whitelist. Fail the pipeline on a critical finding.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex5" onchange="saveCheck('ex5',this.checked)">
+        <label for="ex5"><strong>Exercise 5:</strong> Build a structured extraction pipeline: source doc → <code>tool_choice</code>-forced JSON schema → schema validation → retry-with-feedback on failure.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex6" onchange="saveCheck('ex6',this.checked)">
+        <label for="ex6"><strong>Exercise 6:</strong> Implement SSE streaming end-to-end. Reference this project's <code>ConversationController</code>: JSON-encode tokens, handle ASYNC dispatcher security context.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex7" onchange="saveCheck('ex7',this.checked)">
+        <label for="ex7"><strong>Exercise 7:</strong> Design a rate-limiting strategy for a multi-user LLM system: per-user, per-model, request limit (pre-call) + token limit (post-call). Reference Bucket4j impl here.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex8" onchange="saveCheck('ex8',this.checked)">
+        <label for="ex8"><strong>Exercise 8:</strong> Write a system prompt that resists prompt injection. Test it adversarially: try to override role, extract system prompt, inject new instructions via user message.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex9" onchange="saveCheck('ex9',this.checked)">
+        <label for="ex9"><strong>Exercise 9:</strong> Build a multi-agent system: orchestrator delegates to 2 parallel subagents, aggregates results. Verify that subagents do NOT have each other's tools.</label>
+      </li>
+      <li class="check-item">
+        <input type="checkbox" id="ex10" onchange="saveCheck('ex10',this.checked)">
+        <label for="ex10"><strong>Exercise 10:</strong> Implement an audit log for all LLM calls capturing: user, model, tokens in/out, tools used, stop_reason. Reference <code>chat_logs</code> table in this project.</label>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SECTION 4 ═══ -->
+<div class="section-card" id="s4">
+  <div class="section-head" onclick="toggleSection('s4')">
+    <span class="section-tag tag-4">§4</span>
+    <span class="section-title">Judgment Heuristics — For Unexpected Scenarios</span>
+    <span class="section-subtitle">Apply these when you haven't studied the exact scenario</span>
+    <span class="chevron" id="chev-s4">▶</span>
+    <div class="section-check" id="chk-s4" onclick="event.stopPropagation();toggleCheck('s4')"></div>
+  </div>
+  <div class="section-body" id="body-s4">
+
+    <h3>The 6 Questions — Ask for Every Question</h3>
+    <div class="domain-grid">
+      <div class="domain-card">
+        <div class="domain-name">1. Who is the user?</div>
+        <p style="font-size:13px;margin-top:6px;color:var(--muted)">End user, developer, internal ops, or another agent? Different principals have different trust levels and blast radii.</p>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">2. What can go wrong?</div>
+        <p style="font-size:13px;margin-top:6px;color:var(--muted)">Hallucination, prompt injection, data leakage, runaway costs, latency blowup, inconsistent state?</p>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">3. What's the blast radius?</div>
+        <p style="font-size:13px;margin-top:6px;color:var(--muted)">Read-only vs. mutating? Reversible vs. irreversible? Single-user vs. system-wide impact?</p>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">4. Is an agent needed?</div>
+        <p style="font-size:13px;margin-top:6px;color:var(--muted)">Or is a single well-prompted API call sufficient? Simpler is almost always better.</p>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">5. How do you evaluate success?</div>
+        <p style="font-size:13px;margin-top:6px;color:var(--muted)">Define the metric before designing the system. Resolution rate, CSAT, token cost, latency P99?</p>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">6. What breaks at scale?</div>
+        <p style="font-size:13px;margin-top:6px;color:var(--muted)">Context window, latency, cost, rate limits, data consistency, parallel agent conflicts?</p>
+      </div>
+    </div>
+
+    <h3>Domain-by-Domain Exam Traps</h3>
+    <table>
+      <tr><th>Domain</th><th>Wrong answer (trap)</th><th>Right answer</th></tr>
+      <tr><td><span class="badge b-red">D1</span></td><td>Orchestrator has all subagent tools</td><td>Context isolation — each agent gets only its tools</td></tr>
+      <tr><td><span class="badge b-red">D1</span></td><td>Retry tool call without feedback</td><td>Return error info; let Claude decide to retry</td></tr>
+      <tr><td><span class="badge b-red">D1</span></td><td>Serial tool calls for independent tasks</td><td>Parallel tool calls; call all, then loop back once</td></tr>
+      <tr><td><span class="badge b-blue">D2</span></td><td>20 tools per MCP server is fine</td><td>4–5 tools; split by domain into multiple servers</td></tr>
+      <tr><td><span class="badge b-blue">D2</span></td><td>Hardcode credentials in .mcp.json</td><td>Environment variables: <code>${GH_TOKEN}</code></td></tr>
+      <tr><td><span class="badge b-green">D3</span></td><td>CLAUDE.md prevents security issues</td><td>Hooks enforce; CLAUDE.md only guides</td></tr>
+      <tr><td><span class="badge b-green">D3</span></td><td><code>--allowedTools=*</code> in CI</td><td>Minimal explicit whitelist; read-only by default</td></tr>
+      <tr><td><span class="badge b-purple">D4</span></td><td>Few-shot always helps</td><td>Only if task is ambiguous; otherwise adds cost/noise</td></tr>
+      <tr><td><span class="badge b-purple">D4</span></td><td>System prompt forces JSON reliably</td><td><code>tool_choice</code> structurally enforces schema</td></tr>
+      <tr><td><span class="badge b-yellow">D5</span></td><td>Prompt caching is automatic</td><td>Opt-in; must set <code>cache_control</code> breakpoints</td></tr>
+      <tr><td><span class="badge b-yellow">D5</span></td><td>Context can grow unbounded</td><td>Strategy required: sliding window, summarization, hierarchical</td></tr>
+      <tr><td><span class="badge b-yellow">D5</span></td><td>Caching system + conversation history</td><td>Cache system + tools (stable); not conversation (changes every turn)</td></tr>
+    </table>
+
+    <h3>CALM Framework (D5)</h3>
+    <pre><code>C — Capacity:   How many tokens available for history?
+A — Architecture: Sliding window, hierarchical, or summarization?
+L — Lifecycle:  When to trim, summarize, or compact?
+M — Metrics:    How to detect quality degradation as context grows?</code></pre>
+
+    <h3>Prompt Caching Cost Math</h3>
+    <pre><code>Cache write:  +10% cost (first request pays to populate cache)
+Cache read:   10% of normal cost (subsequent requests)
+
+Example — 2 requests, 10K cached tokens:
+Request 1: 10K normal + (10K × 10%) cache-write = 11K effective cost
+Request 2: (10K × 10%) cache-read = 1K effective cost
+Total: 12K vs 20K without caching = 40% savings
+
+Rule: Cache system + tools (stable). Never cache conversation (changes every turn).
+Max 5 cache breakpoints per message.</code></pre>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SECTION 5 ═══ -->
+<div class="section-card" id="s5">
+  <div class="section-head" onclick="toggleSection('s5')">
+    <span class="section-tag tag-5">§5</span>
+    <span class="section-title">Key ADRs — Exam-Relevant Architectural Decisions</span>
+    <span class="section-subtitle">Real trade-offs from this project · Every one maps to a CCA-F concept</span>
+    <span class="chevron" id="chev-s5">▶</span>
+    <div class="section-check" id="chk-s5" onclick="event.stopPropagation();toggleCheck('s5')"></div>
+  </div>
+  <div class="section-body" id="body-s5">
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">These are not hypothetical. Every row is a real decision made building this gateway — and maps directly to the kind of trade-off reasoning the exam tests.</p>
+    <table>
+      <tr><th style="width:30%">Decision</th><th>Why it matters (exam angle)</th></tr>
+      <tr class="adr-row">
+        <td>Flyway instead of <code>ddl-auto=update</code></td>
+        <td><strong>Schema is production data.</strong> Migrations must be auditable, versioned, and repeatable. <code>ddl-auto=update</code> makes schema changes implicit and untracked — wrong for any production LLM system that has chat logs and user data.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Integer PK in tool path, not string modelId</td>
+        <td><strong>Design tools around transport constraints.</strong> Model IDs contain <code>/</code>. Tomcat normalizes URL-encoded slashes before Spring MVC routing. Using integer PK is the correct agentic tool design decision.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>SSE tokens JSON-encoded, not raw strings</td>
+        <td><strong>Protocol gotcha.</strong> Raw <code>\n</code> in SSE <code>data:</code> field is treated as event separator — silently drops newlines from streamed content. JSON-encode on backend, <code>JSON.parse</code> on frontend.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>AES-GCM for stored API keys, not BCrypt</td>
+        <td><strong>Wrong hash function breaks functionality.</strong> BCrypt is one-way (verify only). API keys must be decrypted to use for upstream calls. AES-GCM is the only correct choice here.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Bucket4j per-user rate limiting</td>
+        <td><strong>Global limits punish well-behaved users.</strong> Per-user isolation is fairer and safer — one bad actor can't exhaust system quota. Per-model limits add cost gates for expensive models.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Request limit pre-call, token limit post-call</td>
+        <td><strong>Two-phase enforcement is the only correct model.</strong> Token count is unknown before call completes. Check request count (known) before call; check token count (measured) after.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>nginx Authorization pass-through (BYOK)</td>
+        <td><strong>Per-user attribution requires forwarding the user's key.</strong> Injecting a system key into every request hides which user made the call — defeats per-user tracking and BYOK model.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Sparse preference table (absence = enabled)</td>
+        <td><strong>Scalable default.</strong> Pre-populating every user×model row doesn't scale. Sparse table with absence-means-enabled requires no migration when new models are added.</td>
+      </tr>
+      <tr class="adr-row">
+        <td><code>@Transactional</code> on lazy collection access</td>
+        <td><strong>Hibernate session lifecycle.</strong> Session closes after each repository call. Accessing lazy collections outside a transaction causes <code>LazyInitializationException</code>. Missing this annotation causes production failures.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>ASYNC dispatcher must <code>permitAll()</code></td>
+        <td><strong>SSE-specific Spring Security gotcha.</strong> <code>SseEmitter.complete()</code> triggers an async re-dispatch. Spring Security intercepts it with no SecurityContext and throws Access Denied. Fix: <code>.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()</code>.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Upstream 404 auto-disables model</td>
+        <td><strong>Graceful degradation.</strong> When OpenRouter returns 404 for a model (removed from free tier), automatically disable it in DB rather than letting every subsequent call fail. Ops-grade LLM system must self-heal on model changes.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Atomic upsert for model toggle</td>
+        <td><strong>Concurrent write safety.</strong> Load-or-create pattern has race condition: two concurrent inserts violate unique constraint, or last-write-wins produces wrong toggle state. <code>INSERT ... ON DUPLICATE KEY UPDATE enabled = NOT enabled</code> is atomic.</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-tip mt"><strong>How to use this on the exam:</strong> When you see a question about schema management, key storage, rate limiting, or agent tool design — these ADRs give you the concrete reasoning. The exam rewards "I know why this pattern exists" over "I memorized this pattern".</div>
+
+  </div>
+</div>
+
+<!-- ── Quick Reference (always visible) ── -->
+<div class="section-card" id="sqr">
+  <div class="section-head" onclick="toggleSection('sqr')">
+    <span class="section-tag" style="background:rgba(121,192,255,.15);color:var(--acc2)">⚡</span>
+    <span class="section-title">Quick Reference — Last Hour Before Exam</span>
+    <span class="section-subtitle">Domain weights · stop_reason · tool_choice · CLAUDE.md precedence</span>
+    <span class="chevron" id="chev-sqr">▶</span>
+    <div class="section-check" id="chk-sqr" onclick="event.stopPropagation();toggleCheck('sqr')"></div>
+  </div>
+  <div class="section-body" id="body-sqr">
+
+    <div class="row">
+      <div style="flex:1;min-width:200px">
+        <h3>Domain Weights (memorize)</h3>
+        <pre><code>D1 Agentic Architecture   27%  ████████████
+D2 Tool Design &amp; MCP      18%  ████████
+D3 Claude Code Config     20%  █████████
+D4 Prompt Engineering     20%  █████████
+D5 Context &amp; Reliability  15%  ███████</code></pre>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <h3>stop_reason Values</h3>
+        <pre><code>"end_turn"  → Claude finished → extract text
+"tool_use"  → Tool call wanted → call tools
+"max_tokens"→ Budget hit → handle gracefully
+"stop_sequence"→ Stop seq matched → check context</code></pre>
+      </div>
+    </div>
+
+    <div class="row mt">
+      <div style="flex:1;min-width:200px">
+        <h3>tool_choice Values</h3>
+        <pre><code>"auto"                      → optional
+"any"                       → at least one tool
+{"type":"tool","name":"X"}  → exactly tool X</code></pre>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <h3>CLAUDE.md Precedence</h3>
+        <pre><code>1. .claude/commands/{cmd}.md  (highest)
+2. {module}/.claude/CLAUDE.md
+3. ./CLAUDE.md
+4. ~/.claude/CLAUDE.md        (lowest)</code></pre>
+      </div>
+    </div>
+
+    <h3 class="mt">Last-Minute Checklist</h3>
+    <ul class="checklist" id="checklist-lastmin">
+      <li class="check-item"><input type="checkbox" id="lm1" onchange="saveCheck('lm1',this.checked)"><label for="lm1">Know domain weights by heart: 27%, 18%, 20%, 20%, 15%</label></li>
+      <li class="check-item"><input type="checkbox" id="lm2" onchange="saveCheck('lm2',this.checked)"><label for="lm2">Know all 6 official scenarios + 7 extended (13 total)</label></li>
+      <li class="check-item"><input type="checkbox" id="lm3" onchange="saveCheck('lm3',this.checked)"><label for="lm3">Know stop_reason values: <code>tool_use</code> → loop back; <code>end_turn</code> → done</label></li>
+      <li class="check-item"><input type="checkbox" id="lm4" onchange="saveCheck('lm4',this.checked)"><label for="lm4">Know tool_choice: <code>auto</code> ≠ <code>any</code>; use specific <code>{type:"tool",name:"X"}</code> for extraction</label></li>
+      <li class="check-item"><input type="checkbox" id="lm5" onchange="saveCheck('lm5',this.checked)"><label for="lm5">Know CLAUDE.md precedence: command &gt; module &gt; project &gt; user</label></li>
+      <li class="check-item"><input type="checkbox" id="lm6" onchange="saveCheck('lm6',this.checked)"><label for="lm6">Know MCP scoping: <code>.mcp.json</code> &gt; <code>~/.claude.json</code>; secrets via env vars</label></li>
+      <li class="check-item"><input type="checkbox" id="lm7" onchange="saveCheck('lm7',this.checked)"><label for="lm7">Know tool count limit: 4–5 per server; split by domain if more needed</label></li>
+      <li class="check-item"><input type="checkbox" id="lm8" onchange="saveCheck('lm8',this.checked)"><label for="lm8">Know prompt caching: write +10%, read 10%; cache system+tools not conversation</label></li>
+      <li class="check-item"><input type="checkbox" id="lm9" onchange="saveCheck('lm9',this.checked)"><label for="lm9">Know passing score: 720/1000. Know exam is 60 questions, 120 minutes.</label></li>
+      <li class="check-item"><input type="checkbox" id="lm10" onchange="saveCheck('lm10',this.checked)"><label for="lm10">Tool results role: <code>role="user"</code> not "tool" or "assistant"</label></li>
+    </ul>
+
+  </div>
+</div>
+
+</main>
+</div>
+
+<script>
+// ── THEME ──────────────────────────────────────────────────────────────────
+function toggleTheme(){
+  const html=document.documentElement;
+  const isDark=html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  document.getElementById('theme-btn').textContent=isDark?'🌙 Dark':'☀ Light';
+  localStorage.setItem('ccaf-theme',isDark?'light':'dark');
+}
+(function initTheme(){
+  const t=localStorage.getItem('ccaf-theme')||'dark';
+  document.documentElement.setAttribute('data-theme',t);
+  document.getElementById('theme-btn').textContent=t==='dark'?'☀ Light':'🌙 Dark';
+})();
+
+// ── SECTION COLLAPSE ───────────────────────────────────────────────────────
+function toggleSection(id){
+  const body=document.getElementById('body-'+id);
+  const chev=document.getElementById('chev-'+id);
+  const isOpen=body.classList.contains('open');
+  body.classList.toggle('open',!isOpen);
+  chev.classList.toggle('open',!isOpen);
+  const state=JSON.parse(localStorage.getItem('ccaf-open')||'{}');
+  state[id]=!isOpen;
+  localStorage.setItem('ccaf-open',JSON.stringify(state));
+}
+function toggleSub(id){
+  const body=document.getElementById('body-sub-'+id);
+  const chev=document.getElementById('chev-sub-'+id);
+  if(!body||!chev)return;
+  const isOpen=body.classList.contains('open');
+  body.classList.toggle('open',!isOpen);
+  chev.classList.toggle('open',!isOpen);
+}
+function toggleAll(open){
+  ['s0','s1','s2','s3','s4','s5','sqr'].forEach(id=>{
+    const body=document.getElementById('body-'+id);
+    const chev=document.getElementById('chev-'+id);
+    if(body){body.classList.toggle('open',open);chev.classList.toggle('open',open);}
+  });
+}
+(function restoreOpen(){
+  const state=JSON.parse(localStorage.getItem('ccaf-open')||'{}');
+  Object.entries(state).forEach(([id,isOpen])=>{
+    if(isOpen){
+      const body=document.getElementById('body-'+id);
+      const chev=document.getElementById('chev-'+id);
+      if(body){body.classList.add('open');chev.classList.add('open');}
+    }
+  });
+  // default: open s0 on first visit
+  if(!localStorage.getItem('ccaf-open')){
+    toggleSection('s0');
+  }
+})();
+
+// ── SECTION COMPLETION CHECKBOXES ─────────────────────────────────────────
+function toggleCheck(id){
+  const el=document.getElementById('chk-'+id);
+  const done=!el.classList.contains('done');
+  el.classList.toggle('done',done);
+  const state=JSON.parse(localStorage.getItem('ccaf-sections')||'{}');
+  state[id]=done;
+  localStorage.setItem('ccaf-sections',JSON.stringify(state));
+  const dot=document.getElementById('dot-'+id);
+  if(dot)dot.classList.toggle('done',done);
+  updateProgress();
+}
+(function restoreChecks(){
+  const state=JSON.parse(localStorage.getItem('ccaf-sections')||'{}');
+  Object.entries(state).forEach(([id,done])=>{
+    if(done){
+      const el=document.getElementById('chk-'+id);
+      if(el)el.classList.add('done');
+      const dot=document.getElementById('dot-'+id);
+      if(dot)dot.classList.add('done');
+    }
+  });
+  updateProgress();
+})();
+
+// ── EXERCISE / LAST-MIN CHECKBOXES ────────────────────────────────────────
+function saveCheck(id,checked){
+  const state=JSON.parse(localStorage.getItem('ccaf-checks')||'{}');
+  state[id]=checked;
+  localStorage.setItem('ccaf-checks',JSON.stringify(state));
+  updateProgress();
+}
+(function restoreItemChecks(){
+  const state=JSON.parse(localStorage.getItem('ccaf-checks')||'{}');
+  Object.entries(state).forEach(([id,checked])=>{
+    const el=document.getElementById(id);
+    if(el)el.checked=checked;
+  });
+})();
+
+// ── PROGRESS BAR ──────────────────────────────────────────────────────────
+function updateProgress(){
+  const sections=['s0','s1','s2','s3','s4','s5','sqr'];
+  const secState=JSON.parse(localStorage.getItem('ccaf-sections')||'{}');
+  const doneSec=sections.filter(id=>secState[id]).length;
+
+  const exercises=['ex1','ex2','ex3','ex4','ex5','ex6','ex7','ex8','ex9','ex10'];
+  const lastMin=['lm1','lm2','lm3','lm4','lm5','lm6','lm7','lm8','lm9','lm10'];
+  const allItems=[...exercises,...lastMin];
+  const itemState=JSON.parse(localStorage.getItem('ccaf-checks')||'{}');
+  const doneItems=allItems.filter(id=>itemState[id]).length;
+
+  const total=sections.length+allItems.length;
+  const done=doneSec+doneItems;
+  const pct=Math.round((done/total)*100);
+
+  document.getElementById('pfill').style.width=pct+'%';
+  document.getElementById('prog-pct').textContent=pct+'%';
+}
+
+// ── NAV JUMP ──────────────────────────────────────────────────────────────
+function jumpTo(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  // auto-open the section if closed
+  const body=document.getElementById('body-'+id);
+  if(body&&!body.classList.contains('open'))toggleSection(id);
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+  // open sub if it's a subsection
+  const subBody=document.getElementById('body-sub-'+id);
+  if(subBody&&!subBody.classList.contains('open'))toggleSub(id);
+}
+
+// ── HIGHLIGHT.JS ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('pre code').forEach(el=>{
+    hljs.highlightElement(el);
+  });
+});
+</script>
+</body>
+</html>
