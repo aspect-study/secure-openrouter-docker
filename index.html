@@ -160,6 +160,62 @@ main::-webkit-scrollbar-thumb{background:var(--bord);border-radius:3px}
 .b-yellow{background:rgba(210,153,34,.15);color:var(--yellow)}
 .b-purple{background:rgba(188,140,255,.15);color:var(--purple)}
 hr{border:none;border-top:1px solid var(--bord);margin:14px 0}
+
+/* ── HAMBURGER (mobile only) ── */
+.hamburger{display:none;align-items:center;justify-content:center;font-size:18px;padding:5px 10px;line-height:1}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:150}
+.sidebar-overlay.visible{display:block}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  /* header */
+  header{padding:8px 12px;gap:8px}
+  .logo{font-size:15px}
+  .header-btns .expand-btns{display:none}
+  .hamburger{display:flex}
+
+  /* sidebar → slide-in drawer */
+  aside{
+    position:fixed;top:0;left:-260px;height:100vh;
+    z-index:200;transition:left .25s ease;
+    box-shadow:4px 0 24px rgba(0,0,0,.5)
+  }
+  aside.open{left:0}
+
+  /* main full-width */
+  .layout{display:block}
+  main{padding:12px;max-width:100%}
+
+  /* section cards */
+  .section-head{padding:12px 12px;gap:8px;flex-wrap:wrap}
+  .section-subtitle{display:none}
+  .section-body{padding:12px}
+  .subsection{padding:10px}
+
+  /* grid → single column */
+  .domain-grid{grid-template-columns:1fr}
+  .row{flex-direction:column}
+
+  /* tables → horizontal scroll */
+  .section-body table,.sub-body table{
+    display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    white-space:nowrap
+  }
+  .section-body table td,.sub-body table td,
+  .section-body table th,.sub-body table th{white-space:normal;min-width:120px}
+  .adr-row td:first-child{white-space:normal;min-width:140px}
+
+  /* code */
+  pre{font-size:12px;padding:10px}
+
+  /* progress % hidden on tiny screens */
+  #prog-pct{display:none}
+}
+@media(max-width:480px){
+  .section-title{font-size:13px}
+  .section-tag{display:none}
+  main{padding:8px}
+}
 </style>
 </head>
 <body>
@@ -171,11 +227,15 @@ hr{border:none;border-top:1px solid var(--bord);margin:14px 0}
     <span id="prog-pct">0%</span>
   </div>
   <div class="header-btns">
-    <button class="hbtn" onclick="toggleAll(true)">Expand All</button>
-    <button class="hbtn" onclick="toggleAll(false)">Collapse All</button>
+    <button class="hbtn hamburger" id="ham-btn" onclick="toggleSidebar()">☰</button>
+    <div class="expand-btns" style="display:flex;gap:8px">
+      <button class="hbtn" onclick="toggleAll(true)">Expand All</button>
+      <button class="hbtn" onclick="toggleAll(false)">Collapse All</button>
+    </div>
     <button class="hbtn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
   </div>
 </header>
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <div class="layout">
 <aside id="sidebar">
@@ -1349,6 +1409,15 @@ D5 Context &amp; Reliability  15%  ███████</code></pre>
 </div>
 
 <script>
+// ── SIDEBAR DRAWER (mobile) ────────────────────────────────────────────────
+function toggleSidebar(){
+  const s=document.getElementById('sidebar');
+  const o=document.getElementById('sidebar-overlay');
+  const open=s.classList.toggle('open');
+  o.classList.toggle('visible',open);
+  document.body.style.overflow=open?'hidden':'';
+}
+
 // ── THEME ──────────────────────────────────────────────────────────────────
 function toggleTheme(){
   const html=document.documentElement;
@@ -1468,13 +1537,14 @@ function updateProgress(){
 function jumpTo(id){
   const el=document.getElementById(id);
   if(!el)return;
-  // auto-open the section if closed
   const body=document.getElementById('body-'+id);
   if(body&&!body.classList.contains('open'))toggleSection(id);
   el.scrollIntoView({behavior:'smooth',block:'start'});
-  // open sub if it's a subsection
   const subBody=document.getElementById('body-sub-'+id);
   if(subBody&&!subBody.classList.contains('open'))toggleSub(id);
+  // close sidebar on mobile after nav
+  const s=document.getElementById('sidebar');
+  if(s.classList.contains('open'))toggleSidebar();
 }
 
 // ── HIGHLIGHT.JS ──────────────────────────────────────────────────────────
