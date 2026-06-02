@@ -10,6 +10,26 @@ with SSE streaming.
 
 ---
 
+## Screenshots
+
+| Login | AI Playground |
+|---|---|
+| ![Login](docs/screenshots/01-login.png) | ![Playground](docs/screenshots/02-dashboard.png) |
+
+| Admin Dashboard | Model Manager |
+|---|---|
+| ![Dashboard](docs/screenshots/03-admin-dashboard.png) | ![Model Manager](docs/screenshots/04-model-manager.png) |
+
+| Chat Logs | User Manager |
+|---|---|
+| ![Chat Logs](docs/screenshots/05-chat-logs.png) | ![Users](docs/screenshots/06-user-manager.png) |
+
+| Settings — API Key | Settings — My Models |
+|---|---|
+| ![Settings](docs/screenshots/07-settings.png) | ![My Models](docs/screenshots/08-my-models.png) |
+
+---
+
 ## Architecture
 
 ```
