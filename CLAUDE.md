@@ -363,6 +363,9 @@ openai/gpt-oss-20b:free
 - **PRD-004: `AppStartupRunner` is non-fatal** — sync failure at startup logs WARN and lets the app start normally; retry via `POST /api/admin/sync-models`
 - **PRD-004: Sync uses `OPENROUTER_API_KEY` optionally** — bound to `app.openrouter.api-key`; empty default is fine since the public `/api/v1/models` endpoint needs no auth
 - **PRD-004: V7 is a data migration, not schema** — cleans up base-model/`:free` duplicate pairs from the initial sync; no table structure changes
+- **PRD-005: Agent uses BYOK key** — `POST /api/agent/chat` is admin-only and requires a configured BYOK key; returns 409 (`KeyNotConfiguredException`) if none set
+- **PRD-005: `OpenRouterAdapter` is the only class that knows about OpenAI format** — `AgentService` speaks Claude API format exclusively (`stop_reason`, `tool_use` blocks, `tool_result` blocks); swapping to Anthropic SDK = replace adapter only
+- **PRD-005: MAX_TURNS = 10** — hard guard in `AgentService` to prevent runaway tool-call loops
 - **@Transactional required on any controller method accessing lazy collections** — Spring closes the Hibernate session after each repository call. Any method that calls `entity.getLazyCollection()` after loading via a repository must be `@Transactional` (readOnly for GETs, default for writes). Missing this causes `LazyInitializationException`.
 - **AuthorizationDeniedException must have a dedicated handler** — `AuthProvider` probes `/api/admin/stats` after every login to detect admin status; regular users always get 403. Without a specific handler it falls through to the catch-all and logs at ERROR. Handler returns 403 at DEBUG level — no stack trace.
 - **Upstream 404 in SSE auto-disables the model** — `ModelConfigService.autoDisableRemovedModel()` is called when SSE catches `"stream error 404"`; sets `enabled = false` in DB, evicts cache, logs at WARN. No manual Flyway migration needed.
@@ -433,4 +436,5 @@ openai/gpt-oss-20b:free
 - [x] Phase 4.7 — PRD-003: User-level model preferences (My Models tab, Playground scoping, sparse preference table)
 - [x] Phase 4.8 — Model lifecycle: 404 auto-disable removed models, V6 migration, upstream error UX (429/404)
 - [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + admin on-demand)
-- [ ] Phase 5 — GitHub Actions CI/CD pipeline
+- [ ] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct agent, CCA-F exam feature) — PENDING
+- [ ] Phase 5.1 — GitHub Actions CI/CD pipeline
