@@ -38,7 +38,8 @@ secure-openrouter-docker/
 │   │   ├── admin/                # AdminController — ROLE_ADMIN endpoints
 │   │   ├── auth/                 # JWT, User entity, register/login
 │   │   ├── chat/                 # ChatController, ChatService, OpenRouterClient
-│   │   ├── config/               # SecurityConfig, HttpClientConfig, AppProperties, ModelConfig
+│   │   ├── config/               # SecurityConfig, HttpClientConfig, AppProperties, ModelConfig,
+│   │   │                         # FreeModelSyncService, AppStartupRunner
 │   │   ├── conversation/         # Conversation, ConversationMessage, ConversationController,
 │   │   │                         # ConversationService, MarkdownNormalizer
 │   │   ├── exception/            # GlobalExceptionHandler
@@ -47,9 +48,13 @@ secure-openrouter-docker/
 │   ├── src/main/resources/
 │   │   ├── application.properties
 │   │   └── db/migration/         # Flyway migrations (schema owner — see ADR-010)
-│   │       ├── V1__initial_schema.sql      # All 5 tables
-│   │       ├── V2__seed_model_config.sql   # 24 free model rows
-│   │       └── V3__seed_admin_user.sql     # Default admin user
+│   │       ├── V1__initial_schema.sql                  # All 5 tables
+│   │       ├── V2__seed_model_config.sql               # Initial free model rows
+│   │       ├── V3__seed_admin_user.sql                 # Default admin user
+│   │       ├── V4__byok_usage_tracking.sql             # BYOK + usage tables
+│   │       ├── V5__user_model_preferences.sql          # Per-user model toggle table
+│   │       ├── V6__disable_removed_free_models.sql     # Disable models removed from free tier
+│   │       └── V7__cleanup_free_model_duplicates.sql   # Remove base IDs that have a :free counterpart
 │   ├── build.gradle              # Groovy DSL (NOT Kotlin DSL — see ADR-003)
 │   ├── settings.gradle
 │   ├── Dockerfile                # Multi-stage: Java 21 build → Java 25 JRE runtime
@@ -143,7 +148,7 @@ All secrets live in `.env` (never committed). Copy from `.env.example`.
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `OPENROUTER_API_KEY` | nginx | Injected at container startup via envsubst |
+| `OPENROUTER_API_KEY` | nginx + Spring Boot | nginx: injected at startup via envsubst. Spring Boot: optional, used by `FreeModelSyncService` to fetch the OpenRouter models list (public endpoint works without it) |
 | `DEFAULT_MODEL` | test scripts | Default free model for smoke tests |
 | `MYSQL_ROOT_PASSWORD` | MySQL container | Rarely used directly |
 | `MYSQL_DATABASE` | MySQL + Spring Boot | `openrouter_gateway` |
@@ -238,6 +243,7 @@ GET  /api/admin/users/{id}/usage/limits                   — user's overrides
 PUT  /api/admin/users/{id}/usage/limits/{modelId}         — set/update user override
 DELETE /api/admin/users/{id}/usage/limits/{modelId}       — remove override (falls back to global)
 GET  /api/admin/users/{id}/usage                          — today's per-model usage for a user
+POST /api/admin/sync-models                               — fetch OpenRouter free models list, insert new ones as disabled; returns {"discovered":N,"added":N,"newModelIds":[...]}
 ```
 
 ### System
@@ -261,6 +267,8 @@ Tables managed by Hibernate `ddl-auto=update` except `model_config` which is see
 - `user_model_usage` — V4: daily per-user-per-model counters (request_count, token_count, reset_at)
 - `user_model_preferences` — V5: per-user model toggle state (sparse — absence of row = enabled by default)
 
+New model rows are inserted at runtime by `FreeModelSyncService` (not Flyway) with `enabled=false`.
+
 ---
 
 ## Default Admin Credentials
@@ -278,31 +286,34 @@ Password: Admin@2026!
 
 ## Allowed Free Models
 
-Verified 2026-05-29 via `test-models.ps1`. Update when models change.
-Check: https://openrouter.ai/models?max_price=0
+**As of Phase 4.9, new free models are discovered automatically** via `FreeModelSyncService`:
+- On every Spring Boot startup (`AppStartupRunner`) — non-fatal if OpenRouter unreachable
+- On admin demand via `POST /api/admin/sync-models` (Model Manager → "Sync Models" button)
 
+New models are inserted with `enabled=false`. Admin must explicitly enable them in Model Manager after review.
+
+When a model is removed from OpenRouter's free tier, it is auto-disabled reactively on the next 404 SSE error (existing Phase 4.8 behaviour).
+
+The initial seed (V2 migration) contained:
 ```
 nvidia/nemotron-nano-9b-v2:free          ← default, most reliable
 meta-llama/llama-3.3-70b-instruct:free
 meta-llama/llama-3.2-3b-instruct:free
-deepseek/deepseek-v4-flash:free
 qwen/qwen3-coder:free
 google/gemma-4-31b-it:free
 openai/gpt-oss-120b:free
 openai/gpt-oss-20b:free
-... (see OpenRouterClient.java FREE_MODELS for full list)
+... (see V2__seed_model_config.sql for full initial list)
 ```
 
-Update in two places when models change:
-1. `OpenRouterClient.java` — `FREE_MODELS` set
-2. `ModelConfig` seed in `db/seed.sql`
+**No longer need to manually update** `OpenRouterClient.java FREE_MODELS` or `db/seed.sql` when OpenRouter adds new free models — the sync handles it.
 
 ---
 
 ## Key Constraints
 
 - **Schema is owned by Flyway** — `ddl-auto=validate`; never change back to `update` or `create`
-- **Never edit applied Flyway migrations** — V1/V2/V3 are locked; add V4+ for any schema change
+- **Never edit applied Flyway migrations** — V1–V7 are locked; add V8+ for any schema change
 - **Flyway boolean columns must be `BIT(1)`** — Hibernate 6 / MySQL8Dialect maps Java `boolean` → `Types#BOOLEAN` → `BIT`; using `TINYINT` causes `SchemaManagementException` on startup
 - **Never hardcode the OpenRouter API key** — envsubst only, never in image layers
 - **ENCRYPTION_MASTER_KEY must be 64 hex chars (32 bytes)** — AES-GCM key for encrypting stored user OpenRouter keys. Generate: `openssl rand -hex 32`. Set in `.env` and `docker-compose.yml`.
@@ -346,7 +357,12 @@ Update in two places when models change:
 - **PRD-003: Optimistic UI must revert on failure** — toggle reverts to pre-click state on API error, accompanied by an error toast
 - **PRD-003: No FK on `user_model_preferences.model_id`** — orphaned rows (from removed model_config entries) are harmless; `getEffectiveModels` excludes them via `model_config` JOIN
 - **PRD-003: SecurityConfig rule** — `/api/user/models/**` → `hasAnyRole("USER", "ADMIN")` added before the `anyRequest()` catch-all
-- **PRD-003: Flyway V5** — `user_model_preferences` table; V1–V5 are locked; next schema change is V6
+- **PRD-003: Flyway V5** — `user_model_preferences` table; V1–V7 are locked; next schema change is V8
+- **PRD-004: `FreeModelSyncService` deduplicates before inserting** — if OpenRouter returns both `X` (pricing=0) and `X:free` (explicit :free suffix), only `X:free` is inserted; prevents duplicate display names in My Models / Model Manager
+- **PRD-004: New models default to `enabled=false`** — `FreeModelSyncService` never auto-enables; admin reviews and enables in Model Manager
+- **PRD-004: `AppStartupRunner` is non-fatal** — sync failure at startup logs WARN and lets the app start normally; retry via `POST /api/admin/sync-models`
+- **PRD-004: Sync uses `OPENROUTER_API_KEY` optionally** — bound to `app.openrouter.api-key`; empty default is fine since the public `/api/v1/models` endpoint needs no auth
+- **PRD-004: V7 is a data migration, not schema** — cleans up base-model/`:free` duplicate pairs from the initial sync; no table structure changes
 - **@Transactional required on any controller method accessing lazy collections** — Spring closes the Hibernate session after each repository call. Any method that calls `entity.getLazyCollection()` after loading via a repository must be `@Transactional` (readOnly for GETs, default for writes). Missing this causes `LazyInitializationException`.
 - **AuthorizationDeniedException must have a dedicated handler** — `AuthProvider` probes `/api/admin/stats` after every login to detect admin status; regular users always get 403. Without a specific handler it falls through to the catch-all and logs at ERROR. Handler returns 403 at DEBUG level — no stack trace.
 - **Upstream 404 in SSE auto-disables the model** — `ModelConfigService.autoDisableRemovedModel()` is called when SSE catches `"stream error 404"`; sets `enabled = false` in DB, evicts cache, logs at WARN. No manual Flyway migration needed.
@@ -360,7 +376,7 @@ Update in two places when models change:
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `SchemaManagementException: wrong column type [enabled/active]` | Flyway V1 used `TINYINT` instead of `BIT(1)` | Hibernate 6 expects `BIT` for Java `boolean`; drop DB and re-run with corrected V1 |
-| Flyway checksum mismatch on startup | Applied migration file was edited | Never edit V1–V3; create V4+ for changes; dev reset: drop DB and re-run |
+| Flyway checksum mismatch on startup | Applied migration file was edited | Never edit V1–V7; create V8+ for changes; dev reset: drop DB and re-run |
 | `WeakKeyException` on startup | JWT_SECRET too short | Regenerate: `powershell -command "[Convert]::ToBase64String((1..32 \| ForEach-Object { [byte](Get-Random -Max 256) }))"` |
 | nginx container restarting | `OPENROUTER_API_KEY` missing | Add key to `.env` |
 | Spring Boot fails with column error | New entity field, Hibernate not updated | Restart Spring Boot; ddl-auto=update adds columns |
@@ -384,14 +400,14 @@ Update in two places when models change:
 | `outline-ring/50` CSS error | shadcn radix-nova opacity modifier incompatible | Remove `outline-ring/50` from index.css |
 | Chat returns 409 | User has no API key configured | User must go to Settings → add OpenRouter API key |
 | `IllegalArgumentException: ENCRYPTION_MASTER_KEY must be 64 hex chars` | Key missing or wrong format | Generate: `openssl rand -hex 32`, set in `.env` |
-| Flyway V4 checksum mismatch | V4 was edited after apply | Never edit V4; create V5+ for changes |
+| Flyway V4–V7 checksum mismatch | Applied migration file was edited | Never edit V4–V7; create V8+ for changes |
 | `KeyNotConfiguredException` in logs | getKeyForUser called for user with no key | Expected — 409 returned to client; no action needed |
 | Usage not incrementing | Token count 0 from OpenRouter | OpenRouter sometimes omits `usage` in stream; counters stay at 0 for that request |
 | `PUT /api/user/models/{id}/toggle` returns 400 | Model is admin-disabled | Admin must enable the model first; user cannot override admin gate |
 | `PUT /api/user/models/{id}/toggle` returns 404 | Wrong id — must be model_config integer PK, not string modelId | Use `UserModelDto.id` (number) from `GET /api/user/models` response |
 | Playground dropdown empty after toggle | `useEffectiveModels` not refreshed | Toggle refreshes hook state automatically; if stale, call `refresh()` from hook |
 | My Models tab shows no models | `GET /api/user/models` failed or returned empty | Check Spring Boot logs; verify V5 migration applied (`SELECT * FROM flyway_schema_history`) |
-| Flyway V5 checksum mismatch | V5 was edited after apply | Never edit V5; create V6 for schema changes |
+| Flyway V5–V7 checksum mismatch | Applied migration file was edited | Never edit V5–V7; create V8 for schema changes |
 | `SchemaManagementException` on `user_model_preferences.enabled` | Column created as BOOLEAN/TINYINT instead of BIT(1) | Drop DB and re-run with corrected V5 using `BIT(1)` |
 | Toggle optimistic UI doesn't revert | Error toast fires but state sticks | Ensure `setOptimisticOverrides` revert path runs in catch block of `handleToggle` |
 | Admin sees preference rows affecting their model list | Admin bypass not firing | Verify `isAdmin` flag is derived from `user.getRole() == Role.ADMIN` in controller, passed to service |
@@ -399,6 +415,10 @@ Update in two places when models change:
 | `ERROR Unhandled exception: Access Denied` on every user login | `AuthorizationDeniedException` from `/api/admin/stats` probe falls through to catch-all | Add dedicated `@ExceptionHandler(AuthorizationDeniedException.class)` returning 403 at DEBUG level |
 | SSE stream closes silently on upstream 429 — no error shown in UI | Generic catch calls `completeWithError()` without sending an `event: error` SSE event first | Detect `"stream error 429"` in message, send error event to client, log at WARN not ERROR |
 | My Models tab shows flat list, Model Manager shows grouped | `OWNER_GROUPS` was only in `ModelManagerPage` | Both views now share the same grouping logic; update `OWNER_GROUPS` in both files when providers change |
+| Duplicate models in My Models / Model Manager | Sync inserted both `X` (pricing=0) and `X:free` — different strings, same display name | V7 migration cleans up existing pairs on next startup; `FreeModelSyncService` dedup logic prevents recurrence |
+| `POST /api/admin/sync-models` returns 500 | OpenRouter `/api/v1/models` unreachable or returned error | Check network connectivity; sync is non-fatal on startup but returns 500 on manual trigger |
+| Startup sync added models that shouldn't be free | OpenRouter model has `pricing={"prompt":"0","completion":"0"}` temporarily | Admin can disable in Model Manager; sync never auto-enables |
+| Sync button shows "Syncing…" indefinitely | Request timed out (30s) or Spring Boot unreachable | Check Spring Boot logs; timeout is 30s for the OpenRouter API call |
 
 ---
 
@@ -412,5 +432,5 @@ Update in two places when models change:
 - [x] Phase 4.6 — PRD-002: BYOK (per-user OpenRouter API key), AES-GCM encryption, daily usage tracking, usage limits admin
 - [x] Phase 4.7 — PRD-003: User-level model preferences (My Models tab, Playground scoping, sparse preference table)
 - [x] Phase 4.8 — Model lifecycle: 404 auto-disable removed models, V6 migration, upstream error UX (429/404)
-- [ ] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + admin on-demand) — PENDING
+- [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + admin on-demand)
 - [ ] Phase 5 — GitHub Actions CI/CD pipeline

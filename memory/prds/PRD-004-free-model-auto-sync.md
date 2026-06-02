@@ -1,8 +1,8 @@
 # PRD-004 — Auto-Sync New Free Models from OpenRouter
 
-**Status:** PENDING — planned, not yet implemented  
+**Status:** DONE — shipped 2026-06-02  
 **Created:** 2026-06-01  
-**Related:** ADR (none yet), Phase 5 pre-work
+**Related:** Phase 4.9, V7 migration (duplicate cleanup)
 
 ---
 
@@ -153,3 +153,18 @@ Flyway V2 is the initial seed; ongoing model management is runtime data, not sch
 | OpenRouter changes API response format | SyncService logs parse errors at WARN, continues |
 | Free tier model IDs change format | Filter on both `:free` suffix and `pricing = 0` |
 | Admin forgets to review new disabled models | Model Manager shows disabled count in filter tab |
+
+---
+
+## Implementation Notes (actual vs. planned)
+
+### Dedup fix (post-ship bug — V7 migration)
+OpenRouter returns some models in two forms: `X` (base, pricing=0) and `X:free` (explicit free variant). Both pass the free-model filter, producing two DB rows with the same display name. Fixed by:
+1. `FreeModelSyncService.fetchFreeModelIds()`: drops `X` when `X:free` is also in the fetched list
+2. `V7__cleanup_free_model_duplicates.sql`: removes existing base-ID rows that have a `:free` counterpart
+
+### Flyway impact (minor deviation from plan)
+V7 migration was added for the duplicate cleanup. New model inserts remain JPA-only (not Flyway).
+
+### `app.openrouter.api-key` property
+Added to `AppProperties.OpenRouter` (optional, empty default). Bound from `${OPENROUTER_API_KEY:}` in `application.properties` — same env var used by nginx, now also consumed by Spring Boot for the sync.
