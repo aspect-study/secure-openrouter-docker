@@ -39,3 +39,4 @@ desktop.ini
 .vscode/
 *.iml
 .claude/
+.gstack/
