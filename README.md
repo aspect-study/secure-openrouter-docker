@@ -1,8 +1,9 @@
 # AspectOR — Secure OpenRouter Gateway
 
 A self-hosted, secure API gateway for [OpenRouter](https://openrouter.ai) free-tier LLMs.
-JWT-authenticated, rate-limited, fully logged, with a per-user BYOK system, usage limits,
-model preferences, an admin dashboard, and an AI Playground with SSE streaming.
+JWT-authenticated, rate-limited, fully logged, with per-user BYOK keys, usage limits,
+model preferences, auto-sync of free models, an admin dashboard, and an AI Playground
+with SSE streaming.
 
 > **Stack:** Docker · nginx · Spring Boot 3.5 (Java 25) · MySQL 8 · React + Vite + shadcn/ui  
 > **Tested on:** Windows 11 (Docker Desktop + PowerShell)
@@ -17,7 +18,7 @@ Browser (localhost:3000)
   ▼ HTTP :8080
 Spring Boot — JWT auth, rate limiting (Bucket4j), chat logging,
               conversations, BYOK key management, usage tracking,
-              user model preferences
+              user model preferences, free model auto-sync
   │
   ▼ HTTP :8081 (localhost only)
 nginx reverse proxy — Authorization pass-through, TLS to OpenRouter
@@ -55,6 +56,9 @@ docker compose ps           :: wait for all (healthy)
 Open **http://localhost:3000** — log in with `admin@openrouter.local` / `Admin@2026!`.  
 **Change the admin password immediately after first login.**
 
+On first startup, Spring Boot automatically syncs free models from OpenRouter and adds
+any new ones to the database as disabled. Review them in **Model Manager** before enabling.
+
 ---
 
 ## Environment Variables
@@ -63,7 +67,7 @@ All secrets live in `.env` — never committed. Copy from `.env.example`.
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `OPENROUTER_API_KEY` | nginx | Kept for health/compat; chat now uses per-user BYOK key |
+| `OPENROUTER_API_KEY` | nginx + Spring Boot | nginx: Authorization pass-through for chat. Spring Boot: optional, used by `FreeModelSyncService` to fetch the models list |
 | `DEFAULT_MODEL` | test scripts | Default free model for smoke tests |
 | `MYSQL_ROOT_PASSWORD` | MySQL | |
 | `MYSQL_DATABASE` | MySQL + Spring Boot | `openrouter_gateway` |
@@ -88,17 +92,23 @@ openssl rand -hex 32
 
 ## Schema Management
 
-Schema is owned by **Flyway** (`ddl-auto=validate`). Migrations in `app/src/main/resources/db/migration/`:
+Schema is owned by **Flyway** (`ddl-auto=validate`). Migrations live in
+`app/src/main/resources/db/migration/`:
 
 | Migration | Content |
 |---|---|
 | `V1__initial_schema.sql` | Core tables: users, chat_logs, conversations, conversation_messages, model_config |
-| `V2__seed_model_config.sql` | 24 free model rows |
+| `V2__seed_model_config.sql` | Initial free model rows (enabled=true) |
 | `V3__seed_admin_user.sql` | Default admin user |
-| `V4__usage_tracking.sql` | model_usage_limits, user_model_usage — daily usage tracking + limits |
+| `V4__byok_usage_tracking.sql` | model_usage_limits, user_model_usage — BYOK + daily usage tracking |
 | `V5__user_model_preferences.sql` | user_model_preferences — per-user model toggle state (sparse) |
+| `V6__disable_removed_free_models.sql` | Disables models removed from OpenRouter's free tier |
+| `V7__cleanup_free_model_duplicates.sql` | Removes base model IDs that have a `:free` counterpart (PRD-004 dedup) |
 
-**Never edit V1–V5 after they have been applied.** Add `V6+` for any schema change.
+**Never edit V1–V7 after they have been applied.** Add `V8+` for any schema change.
+
+New free models discovered after initial seed are inserted at runtime by `FreeModelSyncService`
+(not Flyway) with `enabled=false`.
 
 Flyway runs automatically on startup. To reset (development only):
 ```sql
@@ -184,6 +194,7 @@ GET  /api/admin/chat-logs               ?page=0&size=20&user=&model=&from=&to=
 GET  /api/admin/chat-logs/export        CSV
 GET  /api/admin/models
 PUT  /api/admin/models/{modelId}/toggle
+POST /api/admin/sync-models             Fetch OpenRouter free models list, insert new ones as disabled
 GET  /api/admin/users
 PUT  /api/admin/users/{id}/role
 PUT  /api/admin/users/{id}/status
@@ -203,22 +214,18 @@ GET http://localhost:8081/health        nginx proxy health
 
 ---
 
-## Free Models (verified 2026-05-29)
+## Free Models
 
-Check current availability: https://openrouter.ai/models?max_price=0
+New free models are **discovered automatically** on every startup via `FreeModelSyncService`,
+which calls `https://openrouter.ai/api/v1/models` and inserts any new free models as disabled.
+Admins review and enable them in **Model Manager**.
 
-```
-nvidia/nemotron-nano-9b-v2:free         ← default, most reliable
-meta-llama/llama-3.3-70b-instruct:free
-meta-llama/llama-3.2-3b-instruct:free
-deepseek/deepseek-v4-flash:free
-qwen/qwen3-coder:free
-google/gemma-4-31b-it:free
-openai/gpt-oss-120b:free
-openai/gpt-oss-20b:free
-```
+Models removed from OpenRouter's free tier are auto-disabled the first time a user attempts
+to stream a response — a 404 from upstream triggers `autoDisableRemovedModel()`.
 
-Full list in `OpenRouterClient.java` (`FREE_MODELS`) and `V2__seed_model_config.sql`.
+To manually trigger a sync: **Model Manager → Sync Models button** (`POST /api/admin/sync-models`).
+
+Check current OpenRouter free models: https://openrouter.ai/models?max_price=0
 
 ---
 
@@ -242,18 +249,17 @@ Full list in `OpenRouterClient.java` (`FREE_MODELS`) and `V2__seed_model_config.
 | `WeakKeyException` on startup | JWT_SECRET too short | Regenerate — min 32 bytes Base64 |
 | nginx restarting | `OPENROUTER_API_KEY` missing | Add key to `.env` |
 | `SchemaManagementException: wrong column type [enabled]` | Boolean column created as TINYINT instead of BIT(1) | Hibernate 6 maps Java `boolean` → `BIT`; use `BIT(1)` in all Flyway migrations |
-| Flyway checksum mismatch | Applied migration edited after apply | Never edit V1–V5; add V6+ instead; drop DB for dev reset |
+| Flyway checksum mismatch | Applied migration edited after apply | Never edit V1–V7; add V8+ instead; drop DB for dev reset |
 | `IllegalArgumentException: ENCRYPTION_MASTER_KEY must be 64 hex chars` | Key missing or wrong format | Generate: `openssl rand -hex 32`, set in `.env` |
 | Admin login fails | User not seeded | Flyway V3 seeds admin on fresh DB; check `users` table |
 | Chat returns 409 | User has no API key configured | Go to Settings → add OpenRouter API key |
-| `LazyInitializationException: could not initialize proxy - no Session` | Controller method accesses lazy collection without `@Transactional` | Add `@Transactional(readOnly=true)` to GET methods, `@Transactional` to write methods in ConversationController |
-| `ERROR Unhandled exception: Access Denied` on every user login | `AuthorizationDeniedException` from admin stats probe falls through to catch-all | Fixed: dedicated handler in GlobalExceptionHandler returns 403 at DEBUG level |
-| SSE stream closes silently on upstream 429 — no error shown in UI | Generic catch called `completeWithError()` without sending an `event: error` first | Fixed: upstream 429 detected, error event sent to client, logged at WARN |
+| Duplicate models in My Models / Model Manager | Startup sync inserted both `X` (pricing=0) and `X:free` | V7 migration cleans up on next restart; dedup logic prevents recurrence |
+| `POST /api/admin/sync-models` returns 500 | OpenRouter API unreachable | Check network; startup sync is non-fatal but manual trigger returns 500 |
+| Gradle build fails (`version 69` class file) | Gradle running on Java 25 | Ensure Java 21 in PATH; Toolchain handles Java 25 compilation |
+| `PUT /api/user/models/{id}/toggle` returns 404 | Wrong id — must be model_config integer PK | Use `UserModelDto.id` (number) from `GET /api/user/models` response |
+| `LazyInitializationException: could not initialize proxy` | Controller accesses lazy collection without `@Transactional` | Add `@Transactional(readOnly=true)` to GET methods in ConversationController |
 | Dark mode not working | Tailwind color format wrong | Use `var()` not `hsl(var())` — radix-nova uses oklch |
 | Model switch not working | Conversation model is immutable | Switching model creates a new conversation — by design |
-| Empty bubble after upstream 429 | 429 treated as success | `ConversationController.sendMessage` checks `statusCode >= 400`, rolls back |
-| Gradle build fails with `version 69` | Gradle running on Java 25 | Ensure Java 21 in PATH; Gradle toolchain handles Java 25 compilation |
-| `PUT /api/user/models/{id}/toggle` returns 404 | Wrong id — must be model_config integer PK, not string modelId | Use `UserModelDto.id` (number) from `GET /api/user/models` response |
 
 ---
 
@@ -263,31 +269,35 @@ Full list in `OpenRouterClient.java` (`FREE_MODELS`) and `V2__seed_model_config.
 secure-openrouter-docker/
 ├── app/                                    # Spring Boot Java 25
 │   ├── src/main/java/com/openrouter/gateway/
-│   │   ├── admin/                          # Admin endpoints
+│   │   ├── admin/                          # Admin-only endpoints
 │   │   ├── auth/                           # JWT, User entity, register/login
 │   │   ├── chat/                           # ChatController, ChatService, OpenRouterClient
-│   │   ├── config/                         # SecurityConfig, HttpClientConfig, AppProperties
+│   │   ├── config/                         # SecurityConfig, HttpClientConfig, AppProperties,
+│   │   │                                   # ModelConfig, FreeModelSyncService, AppStartupRunner
 │   │   ├── conversation/                   # Conversations + SSE streaming
 │   │   ├── exception/                      # GlobalExceptionHandler
-│   │   ├── logging/                        # ChatLog
-│   │   └── ratelimit/                      # Bucket4j per-user rate limiting
+│   │   ├── logging/                        # ChatLog entity + repository
+│   │   ├── preferences/                    # User model preferences (PRD-003)
+│   │   ├── ratelimit/                      # Bucket4j per-user rate limiting
+│   │   └── usage/                          # Usage tracking + limits (PRD-002)
 │   └── src/main/resources/
 │       ├── application.properties
-│       └── db/migration/                   # Flyway V1–V5
+│       └── db/migration/                   # Flyway V1–V7
 ├── admin-ui/                               # React + Vite + shadcn/ui (AspectOR brand)
 │   └── src/pages/
 │       ├── LoginPage.tsx
 │       ├── PlaygroundPage.tsx
-│       ├── SettingsPage.tsx                # My Models tab, BYOK, Change Password
-│       └── admin/                          # Dashboard, ChatLogs, ModelManager, UserManager, UsageLimits
+│       ├── SettingsPage.tsx                # My Models, BYOK key, Change Password
+│       └── admin/                          # Dashboard, ChatLogs, ModelManager,
+│                                           # UserManager, UsageLimits
 ├── memory/
-│   ├── adrs/                               # Architectural Decision Records (ADR-001 – ADR-016)
-│   ├── prds/                               # Product Requirements Documents
+│   ├── adrs/                               # Architectural Decision Records (ADR-001–016)
+│   ├── prds/                               # Product Requirements (PRD-001–005)
 │   └── learnings/                          # Hard lessons from development
 ├── docker-compose.yml
 ├── nginx.conf
 ├── .env.example
-└── CLAUDE.md                               # Full project doc (read by AI sessions)
+└── CLAUDE.md                               # Full project reference (read by AI sessions)
 ```
 
 ---
@@ -301,9 +311,10 @@ secure-openrouter-docker/
 - [x] Phase 4.5 — SSE streaming, markdown quality, auth context fix, login bug fixes
 - [x] Phase 4.6 — BYOK per-user API key (AES-GCM), daily usage tracking, usage limits admin
 - [x] Phase 4.7 — User-level model preferences (My Models tab, Playground scoping)
-- [x] Phase 4.8 — Model lifecycle: 404 auto-disable, upstream error UX (429/404), V6 migration
-- [ ] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (pending)
-- [ ] Phase 5 — GitHub Actions CI/CD pipeline
+- [x] Phase 4.8 — Model lifecycle: 404 auto-disable, upstream error UX (429/404)
+- [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + on-demand)
+- [ ] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct agent, CCA-F exam feature)
+- [ ] Phase 5.1 — GitHub Actions CI/CD pipeline
 
 ---
 
