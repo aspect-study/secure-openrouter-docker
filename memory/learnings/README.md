@@ -361,3 +361,28 @@ other URL-special characters must use a surrogate integer key in path variables.
 not negotiable — URL encoding cannot reliably solve it at the Tomcat level.
 
 **See:** ADR-015
+
+---
+
+## Session 2026-06-07: Subagent-driven development + worktree workflow
+
+See [`2026-06-07-subagent-worktree-workflow.md`](2026-06-07-subagent-worktree-workflow.md)
+
+Key lessons:
+- Always run `git worktree list` before dispatching subagents — the worktree may already exist
+- Subagent prompts must specify the worktree path as working directory, not the repo root
+- Always set `$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"` before running `gradlew.bat` from PowerShell
+
+---
+
+## Session 2026-06-08: Agent retry loop, SSE conversion, context
+
+See [`2026-06-08-agent-retry-sse-and-context.md`](2026-06-08-agent-retry-sse-and-context.md)
+
+Key lessons:
+- Free-tier models vary widely in tool-use support; verify before setting as default
+- A retry loop is invisible to the user without SSE — blocking + retry = perceived hang
+- `EventSource` does not support POST; use `fetch` + `ReadableStream` for SSE over POST
+- Gate on `gotDone` flag, not on response content truthiness
+- Per-request context must be sent explicitly in every retry payload — no shared state between retries
+- All outbound HTTP clients need explicit read + connect timeouts

@@ -1,6 +1,6 @@
 # PRD-005 — Gateway Intelligence Agent (ReAct Agent)
 
-**Status:** PENDING — planned, not yet implemented  
+**Status:** SHIPPED — merged to `main` 2026-06-08  
 **Created:** 2026-06-02  
 **Author:** aspect  
 **Related:** CCA-F exam prep, Phase 5
@@ -45,7 +45,7 @@ and get grounded, live answers.
 
 - General-purpose chat (this is separate from the existing Playground)
 - Tool execution that writes/mutates data (read-only tools only)
-- Streaming agent responses (blocking response is sufficient for this scope)
+- ~~Streaming agent responses~~ — **revised post-ship**: agent endpoint was converted to SSE to give real-time per-model retry feedback (see post-implementation notes below)
 - Multi-user access (admin-only)
 
 ---
@@ -195,17 +195,38 @@ agent/
 
 ### `POST /api/agent/chat`
 **Auth:** ROLE_ADMIN + valid BYOK key  
-**Request:**
+**Produces:** `text/event-stream` (SSE — converted post-ship; see post-implementation notes)
+
+**Request body:**
 ```json
 {
   "question": "Is google/gemma-4-31b-it:free enabled and how much was it used today?",
-  "model": "meta-llama/llama-3.3-70b-instruct:free"
+  "model": "meta-llama/llama-3.3-70b-instruct:free",
+  "history": [
+    {"role": "user", "content": "How many models are enabled?"},
+    {"role": "assistant", "content": "8 models are currently enabled."}
+  ]
 }
 ```
-**Response:**
+`model` optional. `history` optional — prior conversation turns for context continuity across model switches.
+
+**SSE event sequence:**
+```
+event: status   data: {"type":"trying","model":"meta-llama/llama-3.3-70b-instruct:free","attempt":1,"total":12}
+event: status   data: {"type":"skipped","model":"openai/gpt-oss-20b:free","reason":"rate_limited"}
+event: done     data: {"reply":"...","toolSteps":[...],"modelUsed":"meta-llama/llama-3.3-70b-instruct:free"}
+```
+
+On failure:
+```
+event: error    data: {"error":"...","status":409|400|503|500}
+```
+
+**`done` payload:**
 ```json
 {
   "reply": "Yes, google/gemma-4-31b-it:free is currently enabled...",
+  "modelUsed": "meta-llama/llama-3.3-70b-instruct:free",
   "toolSteps": [
     {
       "toolName": "get_model_status",
@@ -214,7 +235,7 @@ agent/
     },
     {
       "toolName": "get_gateway_stats",
-      "input": { "date": "2026-06-02" },
+      "input": { "date": "2026-06-08" },
       "result": { "totalRequests": 42, "totalTokens": 18500, "topModel": "google/gemma-4-31b-it:free" }
     }
   ]
@@ -255,3 +276,40 @@ agent/
 When an `ANTHROPIC_API_KEY` is available, create `AnthropicAdapter implements AgentAdapter`
 and bind it in place of `OpenRouterAdapter`. `AgentService` requires zero changes — it already
 speaks native Claude format. The adapter interface isolates all wire-format details.
+
+---
+
+## Post-Implementation Notes (2026-06-07/08)
+
+Three bugs surfaced after initial ship. All fixed and merged to `main`.
+
+### Bug 1 — Default model doesn't support tool use
+`nvidia/nemotron-nano-9b-v2:free` returned 404 from OpenRouter on tool-call requests.
+**Fix:** Default model changed to `meta-llama/llama-3.3-70b-instruct:free`.
+`OpenRouterAdapter` now maps `HttpClientErrorException.NotFound` → `ModelToolUseNotSupportedException`.
+
+### Bug 2 — 429 rate-limiting with no fallback
+When the chosen model hit OpenRouter's rate limit, the agent returned 500 with no retry.
+**Fix:**
+- `AgentService.run()` builds an ordered candidate list (requested model first, then all DB-enabled models via `ModelConfigService.getEnabledModelIds()`)
+- Retry loop catches `ModelRateLimitedException` and `ModelToolUseNotSupportedException`, logs WARN, tries next candidate
+- Exhausted list → `AllModelsUnavailableException` → 503
+- `OpenRouterAdapter` has a 25 s read / 5 s connect timeout; `ResourceAccessException` (timeout) is treated as rate-limited
+- `AgentResponse` gained a `modelUsed` field so the frontend knows which model actually answered
+
+### Bug 3 — UX hung with no feedback during retry
+While the backend silently tried multiple models, the frontend showed a static spinner.
+**Fix:** `POST /api/agent/chat` converted from blocking JSON to SSE:
+- Backend emits `event: status` before and after each model attempt (model name, attempt number, skip reason)
+- Frontend uses `fetch` + `ReadableStream`; updates status bubble live ("Trying llama-3.3…", "rate-limited, trying next…")
+- Toast notification when auto-switch occurs; model selector updates to the winner
+
+### Bug 4 — Empty reply silently drops agent message
+When a model's final turn was tool-only (no accompanying text), `finalReply` was `''`.
+Frontend gated on `gotDone && finalReply` — falsy string meant nothing was added to chat.
+**Fix:** Frontend now checks `gotDone` alone; empty reply renders a fallback string.
+
+### Bug 5 — No conversation context after model switch
+`AgentRequest` originally had only `question` + `model`. Each call started fresh.
+When the retry loop switched to a different model, it had no knowledge of prior exchanges.
+**Fix:** Added `AgentRequest.history: List<HistoryMessage>` (optional). Frontend sends all prior UI messages. `AgentService.runWithModel` prepends history into the `ClaudeMessage` list before the current question, so every retry candidate sees full context.

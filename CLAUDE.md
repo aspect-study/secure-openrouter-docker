@@ -248,8 +248,31 @@ POST /api/admin/sync-models                               — fetch OpenRouter f
 
 ### Agent (requires JWT — ROLE_ADMIN only)
 ```
-POST /api/agent/chat    {"question": "...", "model": "optional-model-id"} — runs ReAct agent; returns {"reply":"...","toolSteps":[...]}
+POST /api/agent/chat    — runs ReAct agent; streams progress as SSE, then a final done event
 ```
+
+**Request body:**
+```json
+{
+  "question": "Is llama-3.3-70b enabled and how much was it used today?",
+  "model": "meta-llama/llama-3.3-70b-instruct:free",
+  "history": [
+    {"role": "user", "content": "What models are enabled?"},
+    {"role": "assistant", "content": "Currently 8 models are enabled..."}
+  ]
+}
+```
+`model` is optional — defaults to `meta-llama/llama-3.3-70b-instruct:free`.
+`history` is optional — prior conversation turns; each retry candidate receives full context.
+
+**SSE event protocol:**
+```
+event: status   data: {"type":"trying","model":"...","attempt":1,"total":12}
+event: status   data: {"type":"skipped","model":"...","reason":"rate_limited"|"tool_unsupported"}
+event: done     data: {"reply":"...","toolSteps":[...],"modelUsed":"..."}
+event: error    data: {"error":"...","status":409|400|503|500}
+```
+Consumer must use `fetch` + `ReadableStream` — `EventSource` does not support POST.
 
 ### System
 ```
@@ -371,6 +394,14 @@ openai/gpt-oss-20b:free
 - **PRD-005: Agent uses BYOK key** — `POST /api/agent/chat` is admin-only and requires a configured BYOK key; returns 409 (`KeyNotConfiguredException`) if none set
 - **PRD-005: `OpenRouterAdapter` is the only class that knows about OpenAI format** — `AgentService` speaks Claude API format exclusively (`stop_reason`, `tool_use` blocks, `tool_result` blocks); swapping to Anthropic SDK = replace adapter only
 - **PRD-005: MAX_TURNS = 10** — hard guard in `AgentService` to prevent runaway tool-call loops
+- **PRD-005: Agent endpoint is SSE, not blocking JSON** — `POST /api/agent/chat` produces `text/event-stream`; use `fetch` + `ReadableStream` on the frontend. `EventSource` does not support POST.
+- **PRD-005: Agent retry loop** — `AgentService.run()` builds a candidate list (requested model first, then all DB-enabled models); on `ModelRateLimitedException` or `ModelToolUseNotSupportedException` it logs WARN and tries the next candidate; exhausted list → `AllModelsUnavailableException` (503)
+- **PRD-005: `ResourceAccessException` treated as rate-limited** — `OpenRouterAdapter` has a 25 s read / 5 s connect timeout via `SimpleClientHttpRequestFactory`; a timeout throws `ResourceAccessException` which is caught and re-thrown as `ModelRateLimitedException` so the retry loop continues
+- **PRD-005: `AgentRequest.history` passes conversation context** — optional list of `{role, content}` pairs; `AgentService.runWithModel` prepends them into the `ClaudeMessage` list before the current question so every retry candidate sees full prior conversation
+- **PRD-005: `AgentResponse.modelUsed`** — the winning model ID after retries; frontend updates the model selector and toasts if it differs from the originally requested model
+- **PRD-005: `gotDone` flag, not `finalReply` truthiness** — some models return an empty text on the final turn (tool-only turn); frontend must check `gotDone` alone when deciding to render the agent reply bubble; never gate on `finalReply` being truthy
+- **PRD-005: `ModelRateLimitedException` is retry-internal** — it is never mapped to an HTTP status; the GlobalExceptionHandler only handles `AllModelsUnavailableException` (503) and `ModelToolUseNotSupportedException` (400); `ModelRateLimitedException` is caught only inside `AgentService.run()`
+- **PRD-005: default model is `meta-llama/llama-3.3-70b-instruct:free`** — `nvidia/nemotron-nano-9b-v2:free` does not reliably support function calling; llama-3.3-70b is the known-good default
 - **@Transactional required on any controller method accessing lazy collections** — Spring closes the Hibernate session after each repository call. Any method that calls `entity.getLazyCollection()` after loading via a repository must be `@Transactional` (readOnly for GETs, default for writes). Missing this causes `LazyInitializationException`.
 - **AuthorizationDeniedException must have a dedicated handler** — `AuthProvider` probes `/api/admin/stats` after every login to detect admin status; regular users always get 403. Without a specific handler it falls through to the catch-all and logs at ERROR. Handler returns 403 at DEBUG level — no stack trace.
 - **Upstream 404 in SSE auto-disables the model** — `ModelConfigService.autoDisableRemovedModel()` is called when SSE catches `"stream error 404"`; sets `enabled = false` in DB, evicts cache, logs at WARN. No manual Flyway migration needed.
@@ -415,6 +446,12 @@ openai/gpt-oss-20b:free
 | `PUT /api/user/models/{id}/toggle` returns 404 | Wrong id — must be model_config integer PK, not string modelId | Use `UserModelDto.id` (number) from `GET /api/user/models` response |
 | Playground dropdown empty after toggle | `useEffectiveModels` not refreshed | Toggle refreshes hook state automatically; if stale, call `refresh()` from hook |
 | My Models tab shows no models | `GET /api/user/models` failed or returned empty | Check Spring Boot logs; verify V5 migration applied (`SELECT * FROM flyway_schema_history`) |
+| Agent sends message but nothing appears in chat | Model returned empty text (tool-only final turn); `gotDone && finalReply` guard silently drops it | Frontend must check `gotDone` alone; `finalReply` being empty is valid — render fallback text |
+| Agent 503 "all models unavailable" | Every enabled model was rate-limited or doesn't support tool use | Enable more models in Model Manager; wait for upstream rate limits; 25 s timeout per model |
+| Agent loses conversation context after model switch | `history` not sent in request, or frontend maps `role: 'agent'` without converting to `'assistant'` | Frontend must map agent messages to `role: 'assistant'` before sending; history is per-request |
+| Agent status SSE events not received | Using `EventSource` which doesn't support POST | Switch to `fetch` + `ReadableStream`; parse `event:` / `data:` lines manually |
+| Agent 400 "does not support tool use" | Model returned 404 from OpenRouter — no tool support | Retry loop auto-skips; if all models fail, only enable tool-capable models in Model Manager |
+| Agent hangs past 25 s with no progress event | `ResourceAccessException` not surfacing — adapter timeout not applied | Verify `SimpleClientHttpRequestFactory` is set on the `RestClient` in `OpenRouterAdapter` |
 | Flyway V5–V7 checksum mismatch | Applied migration file was edited | Never edit V5–V7; create V8 for schema changes |
 | `SchemaManagementException` on `user_model_preferences.enabled` | Column created as BOOLEAN/TINYINT instead of BIT(1) | Drop DB and re-run with corrected V5 using `BIT(1)` |
 | Toggle optimistic UI doesn't revert | Error toast fires but state sticks | Ensure `setOptimisticOverrides` revert path runs in catch block of `handleToggle` |
