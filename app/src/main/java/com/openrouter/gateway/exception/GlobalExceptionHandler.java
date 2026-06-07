@@ -111,6 +111,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Every enabled model failed (rate-limited or no tool support) — 503.
+     */
+    @ExceptionHandler(AllModelsUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleAllModelsUnavailable(AllModelsUnavailableException ex) {
+        log.warn("Agent failed: all models unavailable — {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
      * Selected model does not support function calling — 400.
      */
     @ExceptionHandler(ModelToolUseNotSupportedException.class)

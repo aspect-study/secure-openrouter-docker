@@ -92,6 +92,7 @@ export interface AgentToolStep {
 export interface AgentResponse {
   reply: string
   toolSteps: AgentToolStep[]
+  modelUsed: string
 }
 
 export const agentApi = {

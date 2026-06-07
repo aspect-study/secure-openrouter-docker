@@ -9,6 +9,7 @@ import com.openrouter.gateway.agent.model.ContentBlock;
 import com.openrouter.gateway.agent.model.StopReason;
 import com.openrouter.gateway.agent.tool.GatewayTool;
 import com.openrouter.gateway.config.AppProperties;
+import com.openrouter.gateway.exception.ModelRateLimitedException;
 import com.openrouter.gateway.exception.ModelToolUseNotSupportedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +72,8 @@ public class OpenRouterAdapter {
             return parseResponse(response);
         } catch (HttpClientErrorException.NotFound e) {
             throw new ModelToolUseNotSupportedException(model);
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            throw new ModelRateLimitedException(model);
         }
     }
 

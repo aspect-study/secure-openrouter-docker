@@ -126,8 +126,11 @@ export default function AgentPage() {
 
     try {
       const res = await agentApi.chat(question, selectedModel || undefined)
-      const { reply, toolSteps } = res.data
+      const { reply, toolSteps, modelUsed } = res.data
       setMessages(prev => [...prev, { role: 'agent', content: reply, toolSteps }])
+      if (modelUsed && modelUsed !== selectedModel) {
+        setSelectedModel(modelUsed)
+      }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 409) {
