@@ -12,6 +12,7 @@ import com.openrouter.gateway.config.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
@@ -57,16 +58,21 @@ public class OpenRouterAdapter {
         Map<String, Object> requestBody = buildRequestBody(messages, tools, model);
         log.debug("Sending agent request to OpenRouter: model={}, messages={}", model, messages.size());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/v1/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .body(requestBody)
-                .retrieve()
-                .body(Map.class);
-
-        return parseResponse(response);
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restClient.post()
+                    .uri("/api/v1/chat/completions")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(Map.class);
+            return parseResponse(response);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new IllegalArgumentException(
+                    "Model '" + model + "' does not support tool use via OpenRouter. " +
+                    "Choose a model that supports function calling (e.g. meta-llama/llama-3.3-70b-instruct:free).", e);
+        }
     }
 
     /**

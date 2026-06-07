@@ -25,7 +25,8 @@ public class AgentService {
 
     private static final Logger log = LoggerFactory.getLogger(AgentService.class);
     private static final int MAX_TURNS = 10;
-    private static final String DEFAULT_MODEL = "nvidia/nemotron-nano-9b-v2:free";
+    // Must be a model that supports function calling — nemotron does not
+    private static final String DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
     private final OpenRouterAdapter adapter;
     private final List<GatewayTool> tools;
