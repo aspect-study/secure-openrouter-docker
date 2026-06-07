@@ -732,6 +732,7 @@ Rules:
           <li>Task is deterministic and stateless (no iteration needed)</li>
           <li>Blast radius of autonomous actions is too high (ops/production changes)</li>
         </ul>
+        <div class="callout callout-project"><strong>Phase 5.0 — Gateway Intelligence Agent (live example):</strong> <code>POST /api/agent/chat</code> is a production ReAct loop built on this gateway. Two tools: <code>get_model_status</code> (reads model config from DB) and <code>get_gateway_stats</code> (reads usage stats). Retry candidate list — requested model first, then all DB-enabled models. Streams <code>event: status</code> progress SSE events during retries. Admin-only + BYOK required. <strong>MAX_TURNS=10</strong> hard guard. This is §1.5 patterns implemented end-to-end in Java — study <code>AgentService.java</code> and <code>OpenRouterAdapter.java</code> alongside these patterns.</div>
       </div>
     </div>
 
@@ -952,6 +953,7 @@ Reduce phase: summaries → synthesize into final output</code></pre>
           <li><strong>Safety gate (critical):</strong> Destructive ops (rollback, restart, scale-to-zero) require explicit human confirmation before execution. Never autonomous.</li>
         </ul>
         <div class="callout callout-danger"><strong>Gotcha:</strong> Ops agents need strict output validation — a hallucinated <code>kubectl delete pod</code> command is dangerous. Never execute LLM-generated shell commands without validation and human review. Parse intent, not raw output.</div>
+        <div class="callout callout-project"><strong>Project tie-in (Phase 5.0):</strong> <code>POST /api/agent/chat</code> is a read-only ops agent: asks questions about model enable/disable state and today's usage statistics. Tools are read-only (<code>get_model_status</code>, <code>get_gateway_stats</code>) — no mutation, so no human confirmation gate is needed. Admin-only access is the blast-radius guard. This is the "safest" class of ops agent: observe but never act.</div>
       </div>
     </div>
 
@@ -978,7 +980,7 @@ Reduce phase: summaries → synthesize into final output</code></pre>
           <li class="good">Fail pipeline on critical finding; warn on medium</li>
           <li class="good">Set <code>max_tokens</code> budget to prevent runaway costs</li>
         </ul>
-        <div class="callout callout-project"><strong>This project's Phase 5 roadmap:</strong> GitHub Actions CI/CD pipeline. Would use <code>--allowedTools=read,grep</code> for security review, with explicit write grants only for auto-fix of formatting.</div>
+        <div class="callout callout-project"><strong>This project's Phase 5.1 roadmap:</strong> GitHub Actions CI/CD pipeline (next phase). Would use <code>--allowedTools=read,grep</code> for security review, with explicit write grants only for auto-fix of formatting. Phase 5.0 (Agent) is already shipped — see §5 ADRs for the SSE + retry patterns.</div>
       </div>
     </div>
 
@@ -1280,12 +1282,12 @@ Max 5 cache breakpoints per message.</code></pre>
   <div class="section-head" onclick="toggleSection('s5')">
     <span class="section-tag tag-5">§5</span>
     <span class="section-title">Key ADRs — Exam-Relevant Architectural Decisions</span>
-    <span class="section-subtitle">Real trade-offs from this project · Every one maps to a CCA-F concept</span>
+    <span class="section-subtitle">Real trade-offs from this project (through Phase 5.0) · Every one maps to a CCA-F concept</span>
     <span class="chevron" id="chev-s5">▶</span>
     <div class="section-check" id="chk-s5" onclick="event.stopPropagation();toggleCheck('s5')"></div>
   </div>
   <div class="section-body" id="body-s5">
-    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">These are not hypothetical. Every row is a real decision made building this gateway — and maps directly to the kind of trade-off reasoning the exam tests.</p>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">These are not hypothetical. Every row is a real decision made building this gateway — and maps directly to the kind of trade-off reasoning the exam tests. Rows marked <em>(PRD-005)</em> are from Phase 5.0 — the Gateway Intelligence Agent (ReAct loop, SSE streaming, retry candidate list).</p>
     <table>
       <tr><th style="width:30%">Decision</th><th>Why it matters (exam angle)</th></tr>
       <tr class="adr-row">
@@ -1335,6 +1337,38 @@ Max 5 cache breakpoints per message.</code></pre>
       <tr class="adr-row">
         <td>Atomic upsert for model toggle</td>
         <td><strong>Concurrent write safety.</strong> Load-or-create pattern has race condition: two concurrent inserts violate unique constraint, or last-write-wins produces wrong toggle state. <code>INSERT ... ON DUPLICATE KEY UPDATE enabled = NOT enabled</code> is atomic.</td>
+      </tr>
+      <tr class="adr-row">
+        <td>Agent uses BYOK key; 409 if none set</td>
+        <td><strong>Enforcement at the right layer.</strong> <code>POST /api/agent/chat</code> raises <code>KeyNotConfiguredException</code> → HTTP 409 when no stored API key exists. Never fall back to a system key for agent calls; that breaks per-user attribution and cost tracking. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td>Agent retry loop: candidate list, not single model</td>
+        <td><strong>Graceful degradation for free-tier instability.</strong> <code>AgentService</code> builds a candidate list (requested model first, then all DB-enabled models). On <code>ModelRateLimitedException</code> or <code>ModelToolUseNotSupportedException</code> it logs WARN and tries the next candidate. All exhausted → 503. This is the production pattern for unreliable upstream models — relevant to every agentic scenario in the exam. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td>MAX_TURNS = 10 hard guard in AgentService</td>
+        <td><strong>Runaway loop prevention.</strong> Without a turn cap, a misbehaving model can issue <code>tool_use</code> repeatedly, consuming unlimited tokens and latency. MAX_TURNS is the minimum viable safety gate for any ReAct agent in production. The exam tests this: "What prevents an agentic loop from running indefinitely?" — answer: max-turns guard + budget enforcement. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td>Agent SSE: fetch + ReadableStream, not EventSource</td>
+        <td><strong>EventSource only supports GET.</strong> The agent endpoint requires POST (carries request body with model, question, history). <code>EventSource</code> cannot POST — use <code>fetch</code> + <code>ReadableStream</code> and parse <code>event:</code>/<code>data:</code> lines manually. Classic CCA-F trap: "use SSE for streaming" is correct; "use EventSource for SSE" is wrong when POST is required. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td><code>gotDone</code> flag, not <code>finalReply</code> truthiness</td>
+        <td><strong>Empty-text final turn is valid.</strong> Some models issue a <code>tool_use</code> block as the last turn with no accompanying text. Frontend must check <code>gotDone</code> alone when deciding to render the agent reply; never gate on <code>finalReply</code> being truthy. Gating on text presence silently drops valid responses. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td>ResourceAccessException → ModelRateLimitedException (25 s timeout)</td>
+        <td><strong>Timeout = transient = retryable.</strong> <code>OpenRouterAdapter</code> has a 25 s read / 5 s connect timeout. A timeout throws Spring's <code>ResourceAccessException</code>, caught and re-thrown as <code>ModelRateLimitedException</code> so the retry loop treats it identically to a 429. Never let timeouts escape as unhandled exceptions inside an agentic retry loop. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td>OpenRouterAdapter isolates OpenAI ↔ Claude API format</td>
+        <td><strong>Single responsibility for protocol adaptation.</strong> <code>AgentService</code> speaks Claude API format exclusively (<code>stop_reason</code>, <code>tool_use</code> blocks, <code>tool_result</code> blocks). Only <code>OpenRouterAdapter</code> knows about OpenAI format. Swapping providers = replace adapter only. This is the MCP adapter pattern at the service layer — directly maps to D2 tool-design isolation. <em>(PRD-005)</em></td>
+      </tr>
+      <tr class="adr-row">
+        <td>ModelRateLimitedException is retry-internal, never HTTP</td>
+        <td><strong>Internal signal, not client error.</strong> <code>ModelRateLimitedException</code> is only caught inside <code>AgentService.run()</code>. The global exception handler handles <code>AllModelsUnavailableException</code> (→ 503) and <code>ModelToolUseNotSupportedException</code> (→ 400) only. Leaking an internal retry signal as a client-facing HTTP status is an API design anti-pattern. <em>(PRD-005)</em></td>
       </tr>
     </table>
 
