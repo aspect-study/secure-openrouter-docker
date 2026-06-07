@@ -2,8 +2,8 @@
 
 A self-hosted, secure API gateway for [OpenRouter](https://openrouter.ai) free-tier LLMs.
 JWT-authenticated, rate-limited, fully logged, with per-user BYOK keys, usage limits,
-model preferences, auto-sync of free models, an admin dashboard, and an AI Playground
-with SSE streaming.
+model preferences, auto-sync of free models, an admin dashboard, an AI Playground with
+SSE streaming, and a Gateway Intelligence Agent (ReAct loop, two tools, live retry status).
 
 > **Stack:** Docker · nginx · Spring Boot 3.5 (Java 25) · MySQL 8 · React + Vite + shadcn/ui  
 > **Tested on:** Windows 11 (Docker Desktop + PowerShell)
@@ -28,6 +28,10 @@ with SSE streaming.
 |---|---|
 | ![Settings](docs/screenshots/07-settings.png) | ![My Models](docs/screenshots/08-my-models.png) |
 
+| Gateway Agent | |
+|---|---|
+| ![Gateway Agent](docs/screenshots/09-gateway-agent.png) | *(screenshot pending)* |
+
 ---
 
 ## Architecture
@@ -38,7 +42,8 @@ Browser (localhost:3000)
   ▼ HTTP :8080
 Spring Boot — JWT auth, rate limiting (Bucket4j), chat logging,
               conversations, BYOK key management, usage tracking,
-              user model preferences, free model auto-sync
+              user model preferences, free model auto-sync,
+              Gateway Intelligence Agent (ReAct, SSE, model retry)
   │
   ▼ HTTP :8081 (localhost only)
 nginx reverse proxy — Authorization pass-through, TLS to OpenRouter
@@ -226,6 +231,25 @@ DELETE /api/admin/users/{id}/usage/limits/{modelId}
 GET  /api/admin/users/{id}/usage
 ```
 
+### Agent (JWT — ROLE_ADMIN)
+```
+POST /api/agent/chat    SSE stream — ReAct agent loop with model auto-retry
+```
+
+Request body: `{"question":"...","model":"optional","history":[{"role":"user","content":"..."}]}`
+
+SSE event protocol:
+```
+event: status   data: {"type":"trying","model":"...","attempt":1,"total":12}
+event: status   data: {"type":"skipped","model":"...","reason":"rate_limited"|"tool_unsupported"}
+event: done     data: {"reply":"...","toolSteps":[...],"modelUsed":"..."}
+event: error    data: {"error":"...","status":409|400|503|500}
+```
+
+Default model: `meta-llama/llama-3.3-70b-instruct:free`.  
+Requires BYOK API key configured in Settings (409 if missing).  
+Consumer must use `fetch` + `ReadableStream` — `EventSource` does not support POST.
+
 ### System
 ```
 GET /actuator/health
@@ -280,6 +304,10 @@ Check current OpenRouter free models: https://openrouter.ai/models?max_price=0
 | `LazyInitializationException: could not initialize proxy` | Controller accesses lazy collection without `@Transactional` | Add `@Transactional(readOnly=true)` to GET methods in ConversationController |
 | Dark mode not working | Tailwind color format wrong | Use `var()` not `hsl(var())` — radix-nova uses oklch |
 | Model switch not working | Conversation model is immutable | Switching model creates a new conversation — by design |
+| Agent chat sends message but nothing appears | Model returned empty text (tool-only final turn); frontend gated on `finalReply` being truthy | Frontend must check `gotDone` flag alone; empty reply renders fallback text |
+| Agent 503 "all models unavailable" | Every enabled model is rate-limited or lacks tool support | Enable more models in Model Manager; rate limits reset after ~1 min |
+| Agent loses context after model switch | `history` not included in request | Frontend must send prior messages as `history` array mapped to `role: user/assistant` |
+| Agent hangs with no status events | Missing `SimpleClientHttpRequestFactory` timeout | 25 s read / 5 s connect timeout is set in `OpenRouterAdapter`; verify it's applied to the `RestClient` |
 
 ---
 
@@ -289,7 +317,9 @@ Check current OpenRouter free models: https://openrouter.ai/models?max_price=0
 secure-openrouter-docker/
 ├── app/                                    # Spring Boot Java 25
 │   ├── src/main/java/com/openrouter/gateway/
-│   │   ├── admin/                          # Admin-only endpoints
+│   │   ├── admin/                          # AdminController, AgentController (ROLE_ADMIN)
+│   │   ├── agent/                          # ReAct agent: AgentService, OpenRouterAdapter,
+│   │   │                                   # model/, tool/ (GetModelStatus, GetGatewayStats)
 │   │   ├── auth/                           # JWT, User entity, register/login
 │   │   ├── chat/                           # ChatController, ChatService, OpenRouterClient
 │   │   ├── config/                         # SecurityConfig, HttpClientConfig, AppProperties,
@@ -297,7 +327,6 @@ secure-openrouter-docker/
 │   │   ├── conversation/                   # Conversations + SSE streaming
 │   │   ├── exception/                      # GlobalExceptionHandler
 │   │   ├── logging/                        # ChatLog entity + repository
-│   │   ├── preferences/                    # User model preferences (PRD-003)
 │   │   ├── ratelimit/                      # Bucket4j per-user rate limiting
 │   │   └── usage/                          # Usage tracking + limits (PRD-002)
 │   └── src/main/resources/
@@ -309,9 +338,9 @@ secure-openrouter-docker/
 │       ├── PlaygroundPage.tsx
 │       ├── SettingsPage.tsx                # My Models, BYOK key, Change Password
 │       └── admin/                          # Dashboard, ChatLogs, ModelManager,
-│                                           # UserManager, UsageLimits
+│                                           # UserManager, UsageLimits, AgentPage
 ├── memory/
-│   ├── adrs/                               # Architectural Decision Records (ADR-001–016)
+│   ├── adrs/                               # Architectural Decision Records (ADR-001–017)
 │   ├── prds/                               # Product Requirements (PRD-001–005)
 │   └── learnings/                          # Hard lessons from development
 ├── docker-compose.yml
@@ -333,7 +362,7 @@ secure-openrouter-docker/
 - [x] Phase 4.7 — User-level model preferences (My Models tab, Playground scoping)
 - [x] Phase 4.8 — Model lifecycle: 404 auto-disable, upstream error UX (429/404)
 - [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + on-demand)
-- [ ] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct agent, CCA-F exam feature)
+- [x] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct loop, 2 tools, SSE retry stream, conversation context)
 - [ ] Phase 5.1 — GitHub Actions CI/CD pipeline
 
 ---
