@@ -9,6 +9,7 @@ import com.openrouter.gateway.agent.model.ContentBlock;
 import com.openrouter.gateway.agent.model.StopReason;
 import com.openrouter.gateway.agent.tool.GatewayTool;
 import com.openrouter.gateway.config.AppProperties;
+import com.openrouter.gateway.exception.ModelToolUseNotSupportedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -69,9 +70,7 @@ public class OpenRouterAdapter {
                     .body(Map.class);
             return parseResponse(response);
         } catch (HttpClientErrorException.NotFound e) {
-            throw new IllegalArgumentException(
-                    "Model '" + model + "' does not support tool use via OpenRouter. " +
-                    "Choose a model that supports function calling (e.g. meta-llama/llama-3.3-70b-instruct:free).", e);
+            throw new ModelToolUseNotSupportedException(model);
         }
     }
 

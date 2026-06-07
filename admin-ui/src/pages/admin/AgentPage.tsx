@@ -92,13 +92,16 @@ export default function AgentPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dark = isDarkMode()
 
+  const PREFERRED_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'
+
   useEffect(() => {
     chatApi.getModels()
       .then(r => {
         const list: string[] = (r.data as ModelsResponse).models ?? []
         setModels(list)
         if (list.length > 0 && !selectedModel) {
-          setSelectedModel(list[0])
+          const preferred = list.includes(PREFERRED_MODEL) ? PREFERRED_MODEL : list[0]
+          setSelectedModel(preferred)
         }
       })
       .catch(() => {})
@@ -130,6 +133,11 @@ export default function AgentPage() {
       if (status === 409) {
         toast.error('No API key configured', {
           description: 'The agent requires your OpenRouter API key. Go to Settings to add it.',
+          duration: 8000,
+        })
+      } else if (status === 400) {
+        toast.error('Model does not support tool use', {
+          description: `Switch to ${PREFERRED_MODEL} or another function-calling model.`,
           duration: 8000,
         })
       } else if (status === 403) {

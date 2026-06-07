@@ -111,6 +111,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Selected model does not support function calling — 400.
+     */
+    @ExceptionHandler(ModelToolUseNotSupportedException.class)
+    public ResponseEntity<Map<String, String>> handleModelToolUseNotSupported(ModelToolUseNotSupportedException ex) {
+        log.warn("Agent rejected — model does not support tool use: {}", ex.getModelId());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", ex.getMessage(), "modelId", ex.getModelId()));
+    }
+
+    /**
      * Catch-all for unhandled exceptions — prevents stack traces leaking to clients.
      */
     @ExceptionHandler(Exception.class)
