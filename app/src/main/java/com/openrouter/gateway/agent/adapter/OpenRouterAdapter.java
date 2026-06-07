@@ -13,8 +13,10 @@ import com.openrouter.gateway.exception.ModelRateLimitedException;
 import com.openrouter.gateway.exception.ModelToolUseNotSupportedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
@@ -38,8 +40,12 @@ public class OpenRouterAdapter {
     private final ObjectMapper objectMapper;
 
     public OpenRouterAdapter(AppProperties appProperties, ObjectMapper objectMapper) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5_000);
+        factory.setReadTimeout(25_000);
         this.restClient = RestClient.builder()
                 .baseUrl(appProperties.getOpenrouter().getProxyUrl())
+                .requestFactory(factory)
                 .build();
         this.objectMapper = objectMapper;
     }
@@ -73,6 +79,10 @@ public class OpenRouterAdapter {
         } catch (HttpClientErrorException.NotFound e) {
             throw new ModelToolUseNotSupportedException(model);
         } catch (HttpClientErrorException.TooManyRequests e) {
+            throw new ModelRateLimitedException(model);
+        } catch (ResourceAccessException e) {
+            // read timeout — treat as rate-limited so the retry loop tries the next model
+            log.warn("Request to model '{}' timed out: {}", model, e.getMessage());
             throw new ModelRateLimitedException(model);
         }
     }

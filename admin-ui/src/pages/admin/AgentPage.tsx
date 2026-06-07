@@ -82,14 +82,23 @@ function ToolCallsSection({ steps }: { steps: AgentToolStep[] }) {
   )
 }
 
+const LOADING_MESSAGES = [
+  'Thinking…',
+  'Working on it…',
+  'Trying available models…',
+  'Still searching…',
+]
+
 export default function AgentPage() {
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0])
   const [models, setModels] = useState<string[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const loadingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const dark = isDarkMode()
 
   const PREFERRED_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'
@@ -118,11 +127,18 @@ export default function AgentPage() {
     setMessages(prev => [...prev, { role: 'user', content: question }])
     setInput('')
     setLoading(true)
+    setLoadingMessage(LOADING_MESSAGES[0])
 
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
+
+    let msgIdx = 0
+    loadingTimerRef.current = setInterval(() => {
+      msgIdx = (msgIdx + 1) % LOADING_MESSAGES.length
+      setLoadingMessage(LOADING_MESSAGES[msgIdx])
+    }, 7000)
 
     try {
       const res = await agentApi.chat(question, selectedModel || undefined)
@@ -130,6 +146,11 @@ export default function AgentPage() {
       setMessages(prev => [...prev, { role: 'agent', content: reply, toolSteps }])
       if (modelUsed && modelUsed !== selectedModel) {
         setSelectedModel(modelUsed)
+        const shortName = modelUsed.split('/').pop()?.replace(':free', '') ?? modelUsed
+        toast.info(`Switched to ${shortName}`, {
+          description: 'Original model was rate-limited — agent used the next available model.',
+          duration: 6000,
+        })
       }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
@@ -151,6 +172,11 @@ export default function AgentPage() {
       setMessages(prev => prev.slice(0, -1))
       setInput(question)
     } finally {
+      if (loadingTimerRef.current) {
+        clearInterval(loadingTimerRef.current)
+        loadingTimerRef.current = null
+      }
+      setLoadingMessage(LOADING_MESSAGES[0])
       setLoading(false)
       textareaRef.current?.focus()
     }
@@ -255,7 +281,7 @@ export default function AgentPage() {
                 </div>
                 <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground shadow-sm">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Thinking…</span>
+                  <span>{loadingMessage}</span>
                 </div>
               </div>
             )}
