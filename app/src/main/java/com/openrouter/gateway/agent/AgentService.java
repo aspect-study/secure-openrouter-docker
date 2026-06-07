@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -62,17 +63,29 @@ public class AgentService {
      * @throws com.openrouter.gateway.exception.KeyNotConfiguredException   if no API key is saved
      * @throws AllModelsUnavailableException if every enabled model fails
      */
-    public AgentResponse run(AgentRequest request, String userEmail) {
+    public AgentResponse run(AgentRequest request, String userEmail,
+                             Consumer<Map<String, Object>> statusEmitter) {
         String apiKey = keyService.getKeyForUser(userEmail);
         List<String> candidates = buildCandidateList(request.model());
 
-        for (String model : candidates) {
+        List<AgentRequest.HistoryMessage> history =
+                request.history() != null ? request.history() : List.of();
+
+        for (int i = 0; i < candidates.size(); i++) {
+            String model = candidates.get(i);
+            statusEmitter.accept(Map.of(
+                    "type", "trying",
+                    "model", model,
+                    "attempt", i + 1,
+                    "total", candidates.size()));
             try {
-                return runWithModel(request.question(), model, apiKey);
+                return runWithModel(request.question(), history, model, apiKey);
             } catch (ModelRateLimitedException e) {
                 log.warn("Model '{}' rate-limited, trying next candidate", model);
+                statusEmitter.accept(Map.of("type", "skipped", "model", model, "reason", "rate_limited"));
             } catch (ModelToolUseNotSupportedException e) {
                 log.warn("Model '{}' does not support tool use, trying next candidate", model);
+                statusEmitter.accept(Map.of("type", "skipped", "model", model, "reason", "tool_unsupported"));
             }
         }
 
@@ -97,11 +110,21 @@ public class AgentService {
         return new ArrayList<>(ordered);
     }
 
-    private AgentResponse runWithModel(String question, String model, String apiKey) {
+    private AgentResponse runWithModel(String question,
+                                       List<AgentRequest.HistoryMessage> history,
+                                       String model, String apiKey) {
         Map<String, GatewayTool> toolIndex = tools.stream()
                 .collect(Collectors.toMap(GatewayTool::name, Function.identity()));
 
         List<ClaudeMessage> messages = new ArrayList<>();
+        for (AgentRequest.HistoryMessage msg : history) {
+            if ("user".equals(msg.role())) {
+                messages.add(ClaudeMessage.user(msg.content()));
+            } else {
+                messages.add(ClaudeMessage.assistant(
+                        List.of(new ContentBlock.TextBlock(msg.content()))));
+            }
+        }
         messages.add(ClaudeMessage.user(question));
 
         List<ToolStep> toolSteps = new ArrayList<>();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { agentApi, chatApi, type AgentToolStep } from '@/lib/api'
+import { chatApi, type AgentToolStep } from '@/lib/api'
 import { ChatMessage } from '@/components/ui/chat-message'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,6 +17,12 @@ interface AgentMessage {
 
 interface ModelsResponse {
   models: string[]
+}
+
+const PREFERRED_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'
+
+function shortName(modelId: string) {
+  return modelId.split('/').pop()?.replace(':free', '') ?? modelId
 }
 
 function ToolStepBlock({ step }: { step: AgentToolStep }) {
@@ -82,26 +88,16 @@ function ToolCallsSection({ steps }: { steps: AgentToolStep[] }) {
   )
 }
 
-const LOADING_MESSAGES = [
-  'Thinking…',
-  'Working on it…',
-  'Trying available models…',
-  'Still searching…',
-]
-
 export default function AgentPage() {
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0])
+  const [loadingMessage, setLoadingMessage] = useState('')
   const [models, setModels] = useState<string[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const loadingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const dark = isDarkMode()
-
-  const PREFERRED_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'
 
   useEffect(() => {
     chatApi.getModels()
@@ -120,6 +116,31 @@ export default function AgentPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  const showError = (status: number, question: string, message?: string) => {
+    if (status === 409) {
+      toast.error('No API key configured', {
+        description: 'The agent requires your OpenRouter API key. Go to Settings to add it.',
+        duration: 8000,
+      })
+    } else if (status === 400) {
+      toast.error('Model does not support tool use', {
+        description: `Switch to ${shortName(PREFERRED_MODEL)} or another function-calling model.`,
+        duration: 8000,
+      })
+    } else if (status === 403) {
+      toast.error('Admin access required')
+    } else if (status === 503) {
+      toast.error('All models unavailable', {
+        description: message ?? 'All enabled models are rate-limited. Please try again shortly.',
+        duration: 8000,
+      })
+    } else {
+      toast.error(message ?? 'Agent request failed. Please try again.')
+    }
+    setMessages(prev => prev.slice(0, -1))
+    setInput(question)
+  }
+
   const sendMessage = async () => {
     const question = input.trim()
     if (!question || loading) return
@@ -127,57 +148,115 @@ export default function AgentPage() {
     setMessages(prev => [...prev, { role: 'user', content: question }])
     setInput('')
     setLoading(true)
-    setLoadingMessage(LOADING_MESSAGES[0])
+    setLoadingMessage('Connecting…')
 
-    // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
 
-    let msgIdx = 0
-    loadingTimerRef.current = setInterval(() => {
-      msgIdx = (msgIdx + 1) % LOADING_MESSAGES.length
-      setLoadingMessage(LOADING_MESSAGES[msgIdx])
-    }, 7000)
+    const token = localStorage.getItem('token')
 
     try {
-      const res = await agentApi.chat(question, selectedModel || undefined)
-      const { reply, toolSteps, modelUsed } = res.data
-      setMessages(prev => [...prev, { role: 'agent', content: reply, toolSteps }])
-      if (modelUsed && modelUsed !== selectedModel) {
-        setSelectedModel(modelUsed)
-        const shortName = modelUsed.split('/').pop()?.replace(':free', '') ?? modelUsed
-        toast.info(`Switched to ${shortName}`, {
-          description: 'Original model was rate-limited — agent used the next available model.',
-          duration: 6000,
-        })
+      const history = messages.map(m => ({
+        role: m.role === 'agent' ? 'assistant' : 'user',
+        content: m.content,
+      }))
+
+      const response = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          question,
+          ...(selectedModel ? { model: selectedModel } : {}),
+          history,
+        }),
+      })
+
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => ({}))
+        showError(response.status, question, body.error)
+        return
       }
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 409) {
-        toast.error('No API key configured', {
-          description: 'The agent requires your OpenRouter API key. Go to Settings to add it.',
-          duration: 8000,
-        })
-      } else if (status === 400) {
-        toast.error('Model does not support tool use', {
-          description: `Switch to ${PREFERRED_MODEL} or another function-calling model.`,
-          duration: 8000,
-        })
-      } else if (status === 403) {
-        toast.error('Admin access required')
-      } else {
-        toast.error('Agent request failed. Please try again.')
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let eventName = ''
+      let eventData = ''
+      let finalReply = ''
+      let finalToolSteps: AgentToolStep[] = []
+      let finalModelUsed = selectedModel
+      let gotDone = false
+
+      outer: while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()!
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim()
+          } else if (line === '') {
+            if (eventName && eventData) {
+              try {
+                const payload = JSON.parse(eventData)
+
+                if (eventName === 'status') {
+                  if (payload.type === 'trying') {
+                    const name = shortName(payload.model)
+                    setLoadingMessage(payload.attempt > 1
+                      ? `Trying ${name}… (attempt ${payload.attempt} of ${payload.total})`
+                      : `Trying ${name}…`)
+                  } else if (payload.type === 'skipped') {
+                    const name = shortName(payload.model)
+                    const reason = payload.reason === 'rate_limited' ? 'rate-limited' : 'no tool support'
+                    setLoadingMessage(`${name} ${reason}, trying next…`)
+                  }
+                } else if (eventName === 'done') {
+                  finalReply = payload.reply ?? ''
+                  finalToolSteps = payload.toolSteps ?? []
+                  finalModelUsed = payload.modelUsed ?? selectedModel
+                  gotDone = true
+                } else if (eventName === 'error') {
+                  showError(payload.status ?? 500, question, payload.error)
+                  break outer
+                }
+              } catch {
+                // malformed SSE data — skip
+              }
+              eventName = ''
+              eventData = ''
+            }
+          }
+        }
       }
+
+      if (gotDone) {
+        const reply = finalReply || '(No text response — see tool calls above)'
+        setMessages(prev => [...prev, { role: 'agent', content: reply, toolSteps: finalToolSteps }])
+        if (finalModelUsed && finalModelUsed !== selectedModel) {
+          setSelectedModel(finalModelUsed)
+          toast.info(`Switched to ${shortName(finalModelUsed)}`, {
+            description: 'Original model was rate-limited — agent used the next available model.',
+            duration: 6000,
+          })
+        }
+      }
+    } catch {
+      toast.error('Agent request failed. Please try again.')
       setMessages(prev => prev.slice(0, -1))
       setInput(question)
     } finally {
-      if (loadingTimerRef.current) {
-        clearInterval(loadingTimerRef.current)
-        loadingTimerRef.current = null
-      }
-      setLoadingMessage(LOADING_MESSAGES[0])
       setLoading(false)
+      setLoadingMessage('')
       textareaRef.current?.focus()
     }
   }
@@ -281,7 +360,7 @@ export default function AgentPage() {
                 </div>
                 <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground shadow-sm">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>{loadingMessage}</span>
+                  <span>{loadingMessage || 'Thinking…'}</span>
                 </div>
               </div>
             )}
