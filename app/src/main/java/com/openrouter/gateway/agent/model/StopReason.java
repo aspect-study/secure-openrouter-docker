@@ -11,6 +11,7 @@ public enum StopReason {
     UNKNOWN;
 
     public static StopReason fromOpenAiFinishReason(String finishReason) {
+        if (finishReason == null) return UNKNOWN;
         return switch (finishReason) {
             case "stop" -> END_TURN;
             case "tool_calls" -> TOOL_USE;

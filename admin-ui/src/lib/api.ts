@@ -82,6 +82,23 @@ export const apiKeyApi = {
   removeKey: () => api.delete('/user/api-key'),
 }
 
+// ── Gateway Intelligence Agent (PRD-005) ─────────────────────────────────
+export interface AgentToolStep {
+  toolName: string
+  input: Record<string, unknown>
+  result: Record<string, unknown>
+}
+
+export interface AgentResponse {
+  reply: string
+  toolSteps: AgentToolStep[]
+}
+
+export const agentApi = {
+  chat: (question: string, model?: string) =>
+    api.post<AgentResponse>('/agent/chat', { question, ...(model ? { model } : {}) }),
+}
+
 // ── User Model Preferences (PRD-003) ──────────────────────────────────────
 // All toggle/status calls use the model_config integer PK (UserModelDto.id).
 // The modelId string is for display only and must NEVER appear in a URL path

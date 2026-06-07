@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Repository
 public interface ChatLogRepository extends JpaRepository<ChatLog, Long> {
@@ -51,4 +52,19 @@ public interface ChatLogRepository extends JpaRepository<ChatLog, Long> {
 
     @Query("SELECT SUM(c.totalTokens) FROM ChatLog c WHERE c.userEmail = :userEmail")
     Long sumTotalTokensByUserEmail(@Param("userEmail") String userEmail);
+
+    // ── PRD-005: arbitrary date-range queries for get_gateway_stats tool ──
+
+    @Query("SELECT COUNT(c) FROM ChatLog c WHERE c.createdAt >= :start AND c.createdAt < :end")
+    long countByCreatedAtBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT COALESCE(SUM(c.totalTokens), 0) FROM ChatLog c WHERE c.createdAt >= :start AND c.createdAt < :end")
+    long sumTotalTokensBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query(value = "SELECT model FROM chat_logs WHERE created_at >= :start AND created_at < :end " +
+           "GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1", nativeQuery = true)
+    String findTopModelBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT COUNT(DISTINCT c.userEmail) FROM ChatLog c WHERE c.createdAt >= :start AND c.createdAt < :end")
+    long countDistinctUsersBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

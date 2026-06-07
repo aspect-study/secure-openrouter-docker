@@ -25,4 +25,9 @@ class StopReasonTest {
     void mapsUnrecognisedFinishReasonToUnknown() {
         assertThat(StopReason.fromOpenAiFinishReason("content_filter")).isEqualTo(StopReason.UNKNOWN);
     }
+
+    @Test
+    void mapsNullFinishReasonToUnknown() {
+        assertThat(StopReason.fromOpenAiFinishReason(null)).isEqualTo(StopReason.UNKNOWN);
+    }
 }

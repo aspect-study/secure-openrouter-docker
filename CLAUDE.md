@@ -35,7 +35,7 @@ MySQL :3309 (users, chat_logs, conversations, conversation_messages, model_confi
 secure-openrouter-docker/
 ├── app/                          # Spring Boot Java 25 application
 │   ├── src/main/java/com/openrouter/gateway/
-│   │   ├── admin/                # AdminController — ROLE_ADMIN endpoints
+│   │   ├── admin/                # AdminController, AgentController — ROLE_ADMIN endpoints
 │   │   ├── auth/                 # JWT, User entity, register/login
 │   │   ├── chat/                 # ChatController, ChatService, OpenRouterClient
 │   │   ├── config/               # SecurityConfig, HttpClientConfig, AppProperties, ModelConfig,
@@ -69,7 +69,7 @@ secure-openrouter-docker/
 │   │   └── pages/
 │   │       ├── LoginPage.tsx     # Sign In + Sign Up tabs
 │   │       ├── PlaygroundPage.tsx
-│   │       └── admin/            # Dashboard, ChatLogs, ModelManager, UserManager
+│   │       └── admin/            # Dashboard, ChatLogs, ModelManager, UserManager, AgentPage.tsx
 │   ├── Dockerfile                # Multi-stage: Node build → nginx serve
 │   ├── nginx.conf                # SPA routing (all → index.html)
 │   ├── tailwind.config.ts        # darkMode: class, colors use var() not hsl(var())
@@ -244,6 +244,11 @@ PUT  /api/admin/users/{id}/usage/limits/{modelId}         — set/update user ov
 DELETE /api/admin/users/{id}/usage/limits/{modelId}       — remove override (falls back to global)
 GET  /api/admin/users/{id}/usage                          — today's per-model usage for a user
 POST /api/admin/sync-models                               — fetch OpenRouter free models list, insert new ones as disabled; returns {"discovered":N,"added":N,"newModelIds":[...]}
+```
+
+### Agent (requires JWT — ROLE_ADMIN only)
+```
+POST /api/agent/chat    {"question": "...", "model": "optional-model-id"} — runs ReAct agent; returns {"reply":"...","toolSteps":[...]}
 ```
 
 ### System
@@ -436,5 +441,5 @@ openai/gpt-oss-20b:free
 - [x] Phase 4.7 — PRD-003: User-level model preferences (My Models tab, Playground scoping, sparse preference table)
 - [x] Phase 4.8 — Model lifecycle: 404 auto-disable removed models, V6 migration, upstream error UX (429/404)
 - [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + admin on-demand)
-- [ ] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct agent, CCA-F exam feature) — PENDING
+- [x] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct agent, two tools: get_model_status + get_gateway_stats)
 - [ ] Phase 5.1 — GitHub Actions CI/CD pipeline

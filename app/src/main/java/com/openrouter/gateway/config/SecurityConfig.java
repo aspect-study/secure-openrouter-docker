@@ -59,6 +59,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         // User model preferences — ROLE_USER and ROLE_ADMIN (explicit, matches PRD-003)
                         .requestMatchers("/api/user/models/**").hasAnyRole("USER", "ADMIN")
+                        // Gateway Intelligence Agent — ROLE_ADMIN only (PRD-005)
+                        .requestMatchers("/api/agent/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
 
