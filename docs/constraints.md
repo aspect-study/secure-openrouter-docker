@@ -35,15 +35,17 @@ Organized by subsystem. Each section lists rules first, then a symptom → fix t
 - **`model_usage_limits` global row uses `user_id = NULL`** — always query with `IS NULL`, never `= NULL`
 - **`@Transactional` required on controller methods accessing lazy collections** — Spring closes the Hibernate session after each repository call; add `@Transactional(readOnly = true)` to GET methods, `@Transactional` to write methods in `ConversationController`; missing this causes `LazyInitializationException`
 - **`updated_at` is DB-managed** — `user_model_preferences.updated_at` uses `ON UPDATE CURRENT_TIMESTAMP`; entity field is `insertable=false, updatable=false` — never set in application code
+- **No FK on `user_model_preferences.model_id`** — orphaned rows from removed `model_config` entries are harmless; `getEffectiveModels` excludes them via `model_config` JOIN
 
 ### Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `SchemaManagementException: wrong column type [enabled/active]` | Column created as `TINYINT` instead of `BIT(1)` | Drop DB and re-run with corrected migration using `BIT(1)` |
+| `SchemaManagementException` on `user_model_preferences.enabled` | V5 column created as BOOLEAN/TINYINT instead of `BIT(1)` | Drop DB and re-run with corrected V5 migration using `BIT(1)` |
 | Flyway checksum mismatch on startup | Applied migration file was edited | Never edit V1–V7; create V8+; dev reset: drop DB and re-run |
 | `LazyInitializationException` on `Conversation.messages` | Controller method loads entity without `@Transactional` | Add `@Transactional(readOnly = true)` to `get()` and `@Transactional` to `sendMessage()` in `ConversationController` |
-| Spring Boot fails with column error | New entity field, Hibernate not updated | Restart Spring Boot — `ddl-auto=validate` will surface schema drift |
+| Spring Boot fails with column error | New entity field not in schema | Add a new Flyway migration (V8+) to add the column; `ddl-auto=validate` will error on restart until the migration runs |
 
 ---
 
@@ -93,6 +95,7 @@ Organized by subsystem. Each section lists rules first, then a symptom → fix t
 | Dark mode not working | CSS variable format mismatch | Ensure `tailwind.config.ts` uses `var()` not `hsl(var())` |
 | TypeScript "Invalid character" on line N | Null byte padding from Write tool | Run `tr -d '\0' < file > file.tmp && cp file.tmp file` |
 | `outline-ring/50` CSS error | shadcn radix-nova opacity modifier incompatible | Remove `outline-ring/50` from `index.css` |
+| Toggle optimistic UI doesn't revert | Error toast fires but state sticks | Ensure `setOptimisticOverrides` revert path runs in the `catch` block of `handleToggle` |
 
 ---
 
@@ -113,6 +116,8 @@ Organized by subsystem. Each section lists rules first, then a symptom → fix t
 - **`FreeModelSyncService` deduplicates** — if OpenRouter returns both `X` (pricing=0) and `X:free`, only `X:free` is inserted; prevents duplicate display names
 - **New models default to `enabled=false`** — `FreeModelSyncService` never auto-enables; admin reviews and enables in Model Manager after review
 - **`AppStartupRunner` is non-fatal** — sync failure at startup logs WARN and lets the app start; retry via `POST /api/admin/sync-models`
+- **`/api/chat/models` is unchanged** — Playground uses `/api/user/models` (user-preference-filtered); the chat completions endpoint `/api/chat/models` is the admin-enabled list and must not be modified
+- **`FreeModelSyncService` does not require `OPENROUTER_API_KEY`** — bound to `app.openrouter.api-key`; empty default is fine since the public `/api/v1/models` endpoint needs no auth
 
 ### Troubleshooting
 
@@ -129,6 +134,8 @@ Organized by subsystem. Each section lists rules first, then a symptom → fix t
 | Startup sync added models that shouldn't be free | OpenRouter model has `pricing={"prompt":"0"}` temporarily | Admin can disable in Model Manager; sync never auto-enables |
 | Sync button shows "Syncing…" indefinitely | Request timed out (30s) or Spring Boot unreachable | Check Spring Boot logs; timeout is 30s for the OpenRouter API call |
 | `No endpoints found` from OpenRouter | Model removed from free tier | Run `test-models.ps1`; model auto-disabled on next 404 SSE error |
+| `PUT /api/user/models/{id}/toggle` returns 429 rate limited | Free tier OpenRouter upstream throttle | Wait 30s; try a different model |
+| Admin sees preference rows affecting their model list | Admin bypass not firing | Verify `isAdmin` flag is derived from `user.getRole() == Role.ADMIN` in controller, passed to service |
 
 ---
 
@@ -146,6 +153,7 @@ Organized by subsystem. Each section lists rules first, then a symptom → fix t
 - **`history` role mapping** — frontend must map agent messages to `role: 'assistant'` before sending; never send `role: 'agent'`
 - **`ModelRateLimitedException` is retry-internal** — never mapped to an HTTP status; caught only inside `AgentService.run()`
 - **Default model is `meta-llama/llama-3.3-70b-instruct:free`** — `nvidia/nemotron-nano-9b-v2:free` does not reliably support function calling
+- **`AgentResponse.modelUsed` must update the frontend model selector** — if the winning model after retries differs from the originally requested model, the frontend must update the model selector and show a toast
 
 ### Troubleshooting
 
@@ -174,6 +182,8 @@ Organized by subsystem. Each section lists rules first, then a symptom → fix t
 - **`KeyNotConfiguredException` → 409** — user tried to chat without a saved API key; frontend must redirect to Settings
 - **`UsageLimitExceededException` → 429 with `resetAt`** — includes `limitType` ("request"/"tokens") and ISO `resetAt`
 - **Request limit is pre-call, token limit is post-call** — request count checked before forwarding (unknown tokens); token count checked post-call; if over limit, next call is hard-blocked
+- **`/api/user/models/**` SecurityConfig rule** — `hasAnyRole("USER", "ADMIN")` must be added before the `anyRequest()` catch-all; rule ordering in `SecurityConfig` matters
+- **No usage reset scheduled job** — usage windows are date-keyed; a new UTC day creates a fresh row automatically
 
 ### Troubleshooting
 
