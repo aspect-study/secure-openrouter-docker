@@ -12,9 +12,9 @@ All secrets live in `.env` (never committed). Copy from `.env.example`.
 | `MYSQL_DATABASE` | MySQL + Spring Boot | `openrouter_gateway` |
 | `MYSQL_USER` | MySQL + Spring Boot | App-level DB user |
 | `MYSQL_PASSWORD` | MySQL + Spring Boot | App-level DB password |
-| `JWT_SECRET` | Spring Boot | Base64-encoded, minimum 256 bits (32 bytes) |
+| `JWT_SECRET` | Spring Boot | Must be Base64-encoded, minimum 256 bits (32 bytes) — see Secret Generation below |
 | `JWT_EXPIRATION_MS` | Spring Boot | Default: 86400000 (24 hours) |
-| `OPENROUTER_PROXY_URL` | Spring Boot | `http://localhost:8081` (local) or `http://openrouter-proxy:8080` (Docker) |
+| `OPENROUTER_PROXY_URL` | Spring Boot | `http://localhost:8081` (local) or `http://openrouter-proxy:8080` (Docker) — not required in `.env`; Spring Boot default applies |
 | `ENCRYPTION_MASTER_KEY` | Spring Boot | 64-char hex (32 bytes) for AES-GCM key encryption |
 
 ## Secret Generation
