@@ -8,7 +8,7 @@ Schema owned by Flyway (`ddl-auto=validate`). Never change back to `update` or `
 |---|---|
 | `users` | email, password_hash (BCrypt), role (USER/ADMIN), active, timestamps; V4 adds: openrouter_key_encrypted (AES-GCM), openrouter_key_validated (BIT), openrouter_key_set_at |
 | `chat_logs` | Per-request log: user, model, tokens, latency, status, response preview |
-| `model_config` | Enabled/disabled state per free model; new rows inserted by `FreeModelSyncService` with `enabled=false` |
+| `model_config` | Enabled/disabled state per free model; V2 seeds rows with `enabled=true`; `FreeModelSyncService` inserts new rows with `enabled=false` |
 | `conversations` | Per-user chat sessions: title, model, timestamps |
 | `conversation_messages` | Messages per conversation: role (user/assistant), content |
 | `model_usage_limits` | V4: Admin-controlled daily limits per model; `user_id=NULL` = global default |
@@ -38,3 +38,5 @@ Schema owned by Flyway (`ddl-auto=validate`). Never change back to `update` or `
 - **No FK on `user_model_preferences.model_id`** — orphaned rows from removed `model_config` entries are harmless; `getEffectiveModels` excludes them via JOIN
 - **`@Transactional` required on controller methods accessing lazy collections** — Spring closes the Hibernate session after each repository call; add `@Transactional(readOnly = true)` to GET methods, `@Transactional` to write methods in `ConversationController`
 - **No usage reset scheduled job** — usage windows are date-keyed; a new UTC day creates a fresh row automatically
+- **`toggleModel` must use atomic upsert** — `INSERT ... ON DUPLICATE KEY UPDATE enabled = NOT enabled` against `user_model_preferences`; load-or-create is forbidden (concurrent INSERTs violate the unique key or produce wrong state via last-write-wins)
+- **Request limit is pre-call, token limit is post-call** — request count is checked and incremented before forwarding (tokens are unknown); token count is checked after the response; if over limit, the next call is hard-blocked
