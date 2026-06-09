@@ -41,13 +41,6 @@ DELETE /api/user/api-key                                         — remove key
 GET    /api/user/api-key/status                                  — {configured: true|false}
 ```
 
-## Usage (requires JWT)
-
-```
-GET  /api/user/usage              — today's per-model usage + global aggregate
-GET  /api/user/usage/{modelId}    — today's usage for a specific model
-```
-
 ## User Model Preferences (requires JWT — ROLE_USER or ROLE_ADMIN)
 
 ```
@@ -78,24 +71,20 @@ GET  /api/admin/stats
 GET  /api/admin/chat-logs?page=0&size=20&user=&model=&from=&to=
 GET  /api/admin/chat-logs/export                              CSV download
 GET  /api/admin/models
-PUT  /api/admin/models/{modelId}/toggle
+PUT  /api/admin/models/toggle         {"modelId": "..."} — toggle in request body
 GET  /api/admin/users
 PUT  /api/admin/users/{id}/role      {"role": "USER"|"ADMIN"}
 PUT  /api/admin/users/{id}/status    {"active": true|false}
-GET  /api/admin/usage/limits
-PUT  /api/admin/usage/limits/{modelId}    {"maxRequestsPerDay":50,"maxTokensPerDay":100000}
-GET  /api/admin/users/{id}/usage/limits
-PUT  /api/admin/users/{id}/usage/limits/{modelId}
-DELETE /api/admin/users/{id}/usage/limits/{modelId}
-GET  /api/admin/users/{id}/usage
 POST /api/admin/sync-models           → {"discovered":N,"added":N,"newModelIds":[...]}
 ```
 
-## Agent (requires JWT — ROLE_ADMIN only)
+## Agent (requires JWT — ROLE_ADMIN only, BYOK key required)
 
 ```
 POST /api/agent/chat    — runs ReAct agent; streams progress as SSE, then a final done event
 ```
+
+**Prerequisite:** User must have a configured BYOK API key. Returns 409 (`KeyNotConfiguredException`) if no key is set.
 
 **Request body:**
 ```json
