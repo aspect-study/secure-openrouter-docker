@@ -121,9 +121,3 @@ Password: Admin@2026!
 - [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + on-demand)
 - [x] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct agent, two tools)
 - [ ] Phase 5.1 — GitHub Actions CI/CD pipeline
-
----
-
-## How to use this project as learning material
-
-For study-guide and certification prep, see `docs/superpowers/specs/` and `memory/` for ADRs, PRDs, and design decisions.
