@@ -79,6 +79,12 @@ cd app
 gradlew.bat build -x test
 ```
 
+### Build admin-ui for production
+```cmd
+cd admin-ui
+npm run build
+```
+
 ### Run full stack in Docker
 ```cmd
 docker compose up -d
