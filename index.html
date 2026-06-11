@@ -1277,7 +1277,7 @@ When the user asks a math question, use the calculator tool."""
         )
 
         if response.stop_reason == "end_turn":
-            return next(b.text for b in response.content if b.type == "text")
+            return next((b.text for b in response.content if b.type == "text"), "")
 
         elif response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
@@ -1285,7 +1285,8 @@ When the user asks a math question, use the calculator tool."""
             for block in response.content:
                 if block.type == "tool_use":
                     try:
-                        result = str(eval(block.input["expression"]))
+                        # eval with stripped builtins — DEMO only, use a real math lib in prod
+                        result = str(eval(block.input["expression"], {"__builtins__": {}}, {}))
                     except Exception as e:
                         result = f"Error: {e}"
 
@@ -1357,7 +1358,10 @@ def extract_contacts(document_text: str) -> dict:
             tool_choice={"type": "tool", "name": "save_contacts"},  # structural enforcement
             messages=[{"role": "user", "content": document_text}]
         )
-        contacts = response.content[0].input.get("contacts", [])
+        tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+        if not tool_block:
+            raise ValueError("Expected tool_use block from structural enforcement")
+        contacts = tool_block.input.get("contacts", [])
 
         # validate required fields
         missing = [c for c in contacts if not c.get("name") or not c.get("email")]
@@ -1644,7 +1648,7 @@ D5 Context &amp; Reliability  15%  ███████</code></pre>
   </div>
   <div class="section-body" id="body-s6">
 
-    <div class="callout callout-warn"><strong>Practice score ≠ real exam.</strong> The official practice exam covers only 4 scenarios. A practice score of 85% does NOT guarantee passing. The real exam pool has 13 scenarios — study all of them.</div>
+    <div class="callout callout-warn"><strong>Practice score ≠ real exam.</strong> The official practice exam covers only 4 scenarios. A practice score of 85% does NOT guarantee passing. The real exam pool has 6 scenarios — study all of them.</div>
 
     <h3>4-Week Study Plan</h3>
     <div class="domain-grid">
@@ -1662,7 +1666,7 @@ D5 Context &amp; Reliability  15%  ███████</code></pre>
         <ul style="font-size:12px;margin-top:6px;color:var(--muted)">
           <li>One domain deep-dive per day (re-read + quiz yourself)</li>
           <li>Build Exercise 5 (structured extraction — reference code above)</li>
-          <li>Study §2 — all 13 scenarios, not just the 6 official</li>
+          <li>Study §2 — all 6 scenarios, not just the 4 on the practice exam</li>
           <li>Identify weak spots from §4 trap table</li>
         </ul>
       </div>
