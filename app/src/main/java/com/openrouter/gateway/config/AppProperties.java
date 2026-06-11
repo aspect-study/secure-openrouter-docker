@@ -59,11 +59,16 @@ public class AppProperties {
 
         private String apiKey = "";
 
+        private String synthesisModel = "deepseek/deepseek-r1-0528:free";
+
         public String getProxyUrl() { return proxyUrl; }
         public void setProxyUrl(String proxyUrl) { this.proxyUrl = proxyUrl; }
 
         public String getApiKey() { return apiKey; }
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+
+        public String getSynthesisModel() { return synthesisModel; }
+        public void setSynthesisModel(String synthesisModel) { this.synthesisModel = synthesisModel; }
     }
 
     public static class RateLimit {

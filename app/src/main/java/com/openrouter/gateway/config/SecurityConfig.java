@@ -61,6 +61,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/user/models/**").hasAnyRole("USER", "ADMIN")
                         // Gateway Intelligence Agent — ROLE_ADMIN only (PRD-005)
                         .requestMatchers("/api/agent/**").hasRole("ADMIN")
+                        // Orchestrator Hub — ROLE_USER and ROLE_ADMIN
+                        .requestMatchers("/api/orchestrate/**").hasAnyRole("USER", "ADMIN")
                         .anyRequest().authenticated()
                 )
 

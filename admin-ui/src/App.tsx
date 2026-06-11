@@ -11,6 +11,7 @@ import ChatLogsPage from '@/pages/admin/ChatLogsPage'
 import ModelManagerPage from '@/pages/admin/ModelManagerPage'
 import UserManagerPage from '@/pages/admin/UserManagerPage'
 import AgentPage from '@/pages/admin/AgentPage'
+import OrchestratorPage from '@/pages/admin/OrchestratorPage'
 import AdminLayout from '@/components/layout/AdminLayout'
 
 function ProtectedRoute({ children, requireAdmin = false }: {
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="models" element={<ModelManagerPage />} />
           <Route path="users" element={<UserManagerPage />} />
           <Route path="agent" element={<AgentPage />} />
+          <Route path="orchestrator" element={<OrchestratorPage />} />
         </Route>
 
         <Route path="/" element={<Navigate to="/playground" replace />} />
