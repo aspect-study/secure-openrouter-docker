@@ -276,6 +276,10 @@ hr{border:none;border-top:1px solid var(--bord);margin:14px 0}
     <a class="nav-item" onclick="jumpTo('s4')"><span class="nav-dot" id="dot-s4"></span>§4 Judgment Heuristics</a>
     <a class="nav-item" onclick="jumpTo('s5')"><span class="nav-dot" id="dot-s5"></span>§5 Project ADRs</a>
   </div>
+  <div class="nav-section">
+    <div class="nav-label">Schedule</div>
+    <a class="nav-item" onclick="jumpTo('s6')"><span class="nav-dot" id="dot-s6"></span>§6 Study Plan</a>
+  </div>
 </aside>
 
 <main>
@@ -1232,6 +1236,149 @@ tool_result = {
         <label for="ex10"><strong>Exercise 10:</strong> Implement an audit log for all LLM calls capturing: user, model, tokens in/out, tools used, stop_reason. Reference <code>chat_logs</code> table in this project.</label>
       </li>
     </ul>
+
+    <div class="subsection" style="margin-top:16px">
+      <div class="sub-head" onclick="toggleSub('s3-ref1')">
+        <span class="chevron" id="chev-sub-s3-ref1">▶</span>
+        <span class="sub-title">Reference Code — Exercise 1: Minimal ReAct Loop</span>
+        <span class="badge b-red">D1 27%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s3-ref1">
+        <p style="font-size:13px;color:var(--muted)">Complete working implementation. Verify all three stop_reason paths before calling Exercise 1 done.</p>
+        <pre><code class="language-python">from anthropic import Anthropic
+
+client = Anthropic()
+
+def run_agent(user_input: str) -> str:
+    system_prompt = """You are a helpful assistant with access to a calculator.
+When the user asks a math question, use the calculator tool."""
+
+    tools = [{
+        "name": "calculate",
+        "description": "Evaluate a math expression. Example: '2 + 2' returns '4'",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "expression": {"type": "string"}
+            },
+            "required": ["expression"]
+        }
+    }]
+
+    messages = [{"role": "user", "content": user_input}]
+
+    while True:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            tools=tools,
+            messages=messages
+        )
+
+        if response.stop_reason == "end_turn":
+            return next(b.text for b in response.content if b.type == "text")
+
+        elif response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+
+            for block in response.content:
+                if block.type == "tool_use":
+                    try:
+                        result = str(eval(block.input["expression"]))
+                    except Exception as e:
+                        result = f"Error: {e}"
+
+                    messages.append({
+                        "role": "user",           # ← MUST be "user", not "tool"
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result,
+                            "is_error": "Error" in result
+                        }]
+                    })
+            # loop back automatically
+
+        else:
+            raise RuntimeError(f"Unexpected stop_reason: {response.stop_reason}")
+
+if __name__ == "__main__":
+    print(run_agent("What is 123 * 456?"))             # → calls calculator
+    print(run_agent("What is the capital of France?")) # → end_turn, no tool</code></pre>
+        <div class="callout callout-tip"><strong>Test all three paths:</strong> (1) Math → tool call → correct answer. (2) Non-math → no tool, direct answer. (3) Multi-step: "Calculate 10+5, then multiply by 2" → two sequential tool calls.</div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="sub-head" onclick="toggleSub('s3-ref5')">
+        <span class="chevron" id="chev-sub-s3-ref5">▶</span>
+        <span class="sub-title">Reference Code — Exercise 5: Structured Extraction with tool_choice</span>
+        <span class="badge b-purple">D4 20%</span>
+      </div>
+      <div class="sub-body" id="body-sub-s3-ref5">
+        <p style="font-size:13px;color:var(--muted)">Structural enforcement via tool_choice — never fails to parse. Retry loop passes the specific error back, not a blind retry.</p>
+        <pre><code class="language-python">import json
+from anthropic import Anthropic
+
+client = Anthropic()
+
+def extract_contacts(document_text: str) -> dict:
+    tools = [{
+        "name": "save_contacts",
+        "description": "Save extracted customer contact information",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name":    {"type": "string"},
+                            "email":   {"type": "string", "format": "email"},
+                            "phone":   {"type": "string"},
+                            "company": {"type": "string"}
+                        },
+                        "required": ["name", "email"]
+                    }
+                }
+            },
+            "required": ["contacts"]
+        }
+    }]
+
+    for attempt in range(3):
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system="Extract customer contact information.",
+            tools=tools,
+            tool_choice={"type": "tool", "name": "save_contacts"},  # structural enforcement
+            messages=[{"role": "user", "content": document_text}]
+        )
+        contacts = response.content[0].input.get("contacts", [])
+
+        # validate required fields
+        missing = [c for c in contacts if not c.get("name") or not c.get("email")]
+        if not missing:
+            return {"contacts": contacts}
+
+        # feedback retry — NOT blind retry
+        document_text += f"\n\nPrevious attempt: missing required fields in {missing}. Fix and retry."
+
+    raise ValueError("Extraction failed after 3 attempts")
+
+if __name__ == "__main__":
+    result = extract_contacts("""
+    Hi, I'm John Doe from Acme Corp. Email: john@acme.com.
+    Also reach out to Sarah Smith at sarah.smith@acme.com.
+    """)
+    print(json.dumps(result, indent=2))</code></pre>
+        <div class="callout callout-tip"><strong>Key insight:</strong> <code>tool_choice={"type":"tool","name":"save_contacts"}</code> is structural — Claude cannot return plain text. The retry loop sends the specific validation failure back to Claude so it can correct the exact problem, not guess blindly.</div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1486,6 +1633,134 @@ D5 Context &amp; Reliability  15%  ███████</code></pre>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════ SECTION 6 ═══ -->
+<div class="section-card" id="s6">
+  <div class="section-head" onclick="toggleSection('s6')">
+    <span class="section-tag tag-3">§6</span>
+    <span class="section-title">4-Week Study Plan &amp; Exam Day Tips</span>
+    <span class="section-subtitle">Structured schedule · Daily domain focus · Day-of strategy · CCA quiz command</span>
+    <span class="chevron" id="chev-s6">▶</span>
+    <div class="section-check" id="chk-s6" onclick="event.stopPropagation();toggleCheck('s6')"></div>
+  </div>
+  <div class="section-body" id="body-s6">
+
+    <div class="callout callout-warn"><strong>Practice score ≠ real exam.</strong> The official practice exam covers only 4 scenarios. A practice score of 85% does NOT guarantee passing. The real exam pool has 13 scenarios — study all of them.</div>
+
+    <h3>4-Week Study Plan</h3>
+    <div class="domain-grid">
+      <div class="domain-card">
+        <div class="domain-name">Week 1 — Foundations (20 hrs)</div>
+        <ul style="font-size:12px;margin-top:6px;color:var(--muted)">
+          <li><strong>D1 Agentic Architecture</strong> (6 hrs) — §1.5 + build Exercise 1 (reference code above)</li>
+          <li><strong>D2 Tool Design</strong> (4 hrs) — §1.4 + design Exercise 2 (MCP schema)</li>
+          <li><strong>D3 + D4</strong> (6 hrs) — §1.3 + §1.2 + Exercise 3 (CLAUDE.md setup)</li>
+          <li><strong>D5 Context</strong> (4 hrs) — §4 CALM framework + caching math</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">Week 2 — Deep Dives (20 hrs)</div>
+        <ul style="font-size:12px;margin-top:6px;color:var(--muted)">
+          <li>One domain deep-dive per day (re-read + quiz yourself)</li>
+          <li>Build Exercise 5 (structured extraction — reference code above)</li>
+          <li>Study §2 — all 13 scenarios, not just the 6 official</li>
+          <li>Identify weak spots from §4 trap table</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">Week 3 — Mock Exams (20 hrs)</div>
+        <ul style="font-size:12px;margin-top:6px;color:var(--muted)">
+          <li>Run 3 full mock exams (3 × 120 min)</li>
+          <li>Review every wrong answer — find the pattern, not just the answer</li>
+          <li>Re-read only weak domain sections</li>
+          <li>Redo hands-on exercises you got conceptually wrong</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">Week 4 — Final Review (10 hrs)</div>
+        <ul style="font-size:12px;margin-top:6px;color:var(--muted)">
+          <li>1 final mock exam (120 min)</li>
+          <li>Review weak spots only — no new material</li>
+          <li>Complete Quick Reference checklist (§ above)</li>
+          <li>Sleep 8 hrs night before — non-negotiable</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Daily Domain Priority (by weight)</h3>
+    <table>
+      <tr><th>Priority</th><th>Domain</th><th>Daily time (weeks 1–2)</th><th>Why first</th></tr>
+      <tr><td><span class="badge b-red">1st</span></td><td>D1 Agentic Architecture (27%)</td><td>30 min/day</td><td>Highest weight; builds the mental model everything else depends on</td></tr>
+      <tr><td><span class="badge b-green">2nd</span></td><td>D3 Claude Code (20%)</td><td>20 min/day</td><td>CLAUDE.md, hooks, CI — concrete rules, easy to test hands-on</td></tr>
+      <tr><td><span class="badge b-purple">2nd</span></td><td>D4 Prompt Engineering (20%)</td><td>20 min/day</td><td>tool_choice enforcement, retry loops — high-ROI patterns, frequently tested</td></tr>
+      <tr><td><span class="badge b-blue">3rd</span></td><td>D2 Tool Design (18%)</td><td>15 min/day</td><td>Schema quality, MCP config — precise rules, faster to master</td></tr>
+      <tr><td><span class="badge b-yellow">4th</span></td><td>D5 Context Management (15%)</td><td>15 min/day</td><td>Still 9 questions — CALM + caching math is learnable in a few hours</td></tr>
+    </table>
+
+    <h3>Exam Day Tips</h3>
+    <div class="domain-grid">
+      <div class="domain-card">
+        <div class="domain-name">📅 Night Before</div>
+        <ul style="font-size:12px;margin-top:6px">
+          <li>No new material — review only flagged weak spots</li>
+          <li>Sleep 8 hours — no exceptions</li>
+          <li>Confirm proctoring setup (webcam, photo ID, quiet room)</li>
+          <li>Eat a real breakfast before you start</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">⏱ During the Exam</div>
+        <ul style="font-size:12px;margin-top:6px">
+          <li>Read each question <strong>twice</strong> before answering</li>
+          <li>Flag and skip if stuck &gt;2 min — come back later</li>
+          <li>First instinct is usually right — don't flip answers</li>
+          <li>For every question: ask <em>"what breaks at scale?"</em></li>
+          <li>2 min avg per question — watch the clock at Q20 and Q40</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">✅ If You Finish Early</div>
+        <ul style="font-size:12px;margin-top:6px">
+          <li>Review flagged questions first</li>
+          <li>Check reasoning against CCA-F principles (SPIDER, 6 Questions)</li>
+          <li>Only change an answer if you're <em>certain</em> you were wrong</li>
+          <li>Don't leave early — use the time</li>
+        </ul>
+      </div>
+      <div class="domain-card">
+        <div class="domain-name">🚩 Instant Red Flags</div>
+        <ul style="font-size:12px;margin-top:6px">
+          <li>"Orchestrator has all subagent tools" → ❌</li>
+          <li>"Blind retry without feedback" → ❌</li>
+          <li>"Few-shot examples always help" → ❌</li>
+          <li>"CLAUDE.md enforces security" → ❌ (hooks enforce)</li>
+          <li>"--allowedTools=* in CI" → ❌</li>
+          <li>If an answer sounds like "more = always better" → suspicious</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>CCA Quiz Slash Command</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Save as <code>.claude/commands/cca-quiz.md</code> to run 5-question domain quizzes inside Claude Code. Run with <code>/cca:quiz 1</code> for D1, etc.</p>
+    <pre><code class="language-yaml">--- # .claude/commands/cca-quiz.md
+description: "Run a 5-question CCA-F domain quiz"
+allowed-tools:
+  - read
+model: claude-sonnet-4-6
+---
+
+# CCA-F Quiz
+
+Run a 5-question quiz on the specified domain ($ARGUMENTS).
+For each question: present it, wait for my answer (A/B/C/D),
+tell me if correct and explain why, name the trap in the wrong answers.
+
+Domains: 1=Agentic  2=Tools&MCP  3=ClaudeCode  4=Prompts  5=Context</code></pre>
+
+    <div class="callout callout-info"><strong>Passing score: 720/1000 (72%).</strong> The exam rewards architectural judgment — "what breaks at scale?" and "what's the security risk?" — not memorization. If you've built the §3 exercises and can reason through the §5 ADRs, you're ready.</div>
+
+  </div>
+</div>
+
 </main>
 </div>
 
@@ -1533,7 +1808,7 @@ function toggleSub(id){
   chev.classList.toggle('open',!isOpen);
 }
 function toggleAll(open){
-  ['s0','s1','s2','s3','s4','s5','sqr'].forEach(id=>{
+  ['s0','s1','s2','s3','s4','s5','s6','sqr'].forEach(id=>{
     const body=document.getElementById('body-'+id);
     const chev=document.getElementById('chev-'+id);
     if(body){body.classList.toggle('open',open);chev.classList.toggle('open',open);}
@@ -1596,7 +1871,7 @@ function saveCheck(id,checked){
 
 // ── PROGRESS BAR ──────────────────────────────────────────────────────────
 function updateProgress(){
-  const sections=['s0','s1','s2','s3','s4','s5','sqr'];
+  const sections=['s0','s1','s2','s3','s4','s5','s6','sqr'];
   const secState=JSON.parse(localStorage.getItem('ccaf-sections')||'{}');
   const doneSec=sections.filter(id=>secState[id]).length;
 
