@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
@@ -77,7 +78,10 @@ public class OrchestratorService {
             List<CompletableFuture<OrchestratorResult>> futures = models.stream()
                     .map(m -> CompletableFuture.supplyAsync(
                             () -> openRouterClient.queryModel(m.modelId(), m.name(), prompt, apiKey),
-                            VIRTUAL))
+                            VIRTUAL)
+                            .completeOnTimeout(
+                                new OrchestratorResult(m.modelId(), m.name(), null, 35_000L, "TIMEOUT"),
+                                35, TimeUnit.SECONDS))
                     .toList();
 
             // whenComplete returns a NEW future — collect those and wait on them so
