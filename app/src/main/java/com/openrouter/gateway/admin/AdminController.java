@@ -8,6 +8,8 @@ import com.openrouter.gateway.config.ModelConfigRepository;
 import com.openrouter.gateway.config.ModelConfigService;
 import com.openrouter.gateway.logging.ChatLog;
 import com.openrouter.gateway.logging.ChatLogRepository;
+import com.openrouter.gateway.usage.ModelUsageLimit;
+import com.openrouter.gateway.usage.ModelUsageLimitRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,17 +46,20 @@ public class AdminController {
     private final ModelConfigRepository modelConfigRepository;
     private final ModelConfigService modelConfigService;
     private final FreeModelSyncService freeModelSyncService;
+    private final ModelUsageLimitRepository modelUsageLimitRepository;
 
     public AdminController(ChatLogRepository chatLogRepository,
                            UserRepository userRepository,
                            ModelConfigRepository modelConfigRepository,
                            ModelConfigService modelConfigService,
-                           FreeModelSyncService freeModelSyncService) {
+                           FreeModelSyncService freeModelSyncService,
+                           ModelUsageLimitRepository modelUsageLimitRepository) {
         this.chatLogRepository = chatLogRepository;
         this.userRepository = userRepository;
         this.modelConfigRepository = modelConfigRepository;
         this.modelConfigService = modelConfigService;
         this.freeModelSyncService = freeModelSyncService;
+        this.modelUsageLimitRepository = modelUsageLimitRepository;
     }
 
     // ── Stats ─────────────────────────────────────────────────────────────
@@ -203,6 +208,37 @@ public class AdminController {
                 chatLogRepository.countByUserEmail(saved.getEmail())));
     }
 
+    // ── Usage Limits ──────────────────────────────────────────────────────
+
+    @GetMapping("/usage-limits")
+    public ResponseEntity<List<UsageLimitDto>> getGlobalLimits() {
+        List<UsageLimitDto> limits = modelUsageLimitRepository.findByUserIsNull()
+                .stream().map(UsageLimitDto::from).toList();
+        return ResponseEntity.ok(limits);
+    }
+
+    @PutMapping("/usage-limits")
+    public ResponseEntity<UsageLimitDto> setGlobalLimit(
+            @RequestBody Map<String, Object> body) {
+        String modelId = body.get("modelId") instanceof String s ? s : null;
+        if (modelId == null || modelId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        int maxReq = body.get("maxRequestsPerDay") instanceof Number n ? n.intValue() : 50;
+        int maxTok = body.get("maxTokensPerDay")   instanceof Number n ? n.intValue() : 100_000;
+
+        ModelUsageLimit limit = modelUsageLimitRepository
+                .findByModelIdAndUserIsNull(modelId)
+                .orElse(new ModelUsageLimit(modelId, null, maxReq, maxTok));
+
+        limit.setMaxRequestsPerDay(maxReq);
+        limit.setMaxTokensPerDay(maxTok);
+
+        ModelUsageLimit saved = modelUsageLimitRepository.save(limit);
+        log.info("Global usage limit updated: model={} req={} tok={}", modelId, maxReq, maxTok);
+        return ResponseEntity.ok(UsageLimitDto.from(saved));
+    }
+
     // ── DTOs ──────────────────────────────────────────────────────────────
 
     public record ChatLogDto(Long id, String userEmail, String model,
@@ -227,6 +263,21 @@ public class AdminController {
     }
 
     public record SyncResultDto(int discovered, int added, List<String> newModelIds) {}
+
+    public record UsageLimitDto(Long id, String modelId, Long userId,
+                                 int maxRequestsPerDay, int maxTokensPerDay,
+                                 String updatedAt) {
+        public static UsageLimitDto from(ModelUsageLimit l) {
+            return new UsageLimitDto(
+                    l.getId(),
+                    l.getModelId(),
+                    l.getUser() != null ? l.getUser().getId() : null,
+                    l.getMaxRequestsPerDay(),
+                    l.getMaxTokensPerDay(),
+                    l.getUpdatedAt() != null ? l.getUpdatedAt().toString() : null
+            );
+        }
+    }
 
     public record UserDto(Long id, String email, String role, boolean active,
                            long totalRequests, boolean keyConfigured, String createdAt) {
