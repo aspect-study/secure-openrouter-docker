@@ -51,17 +51,17 @@ class AgentControllerTest {
     void adminUser_returns200WithAgentResponse() throws Exception {
         AgentResponse agentResponse = new AgentResponse(
                 "There were 42 requests today.",
-                List.of(new ToolStep("get_gateway_stats", Map.of(), Map.of("totalRequests", 42)))
+                List.of(new ToolStep("get_gateway_stats", Map.of(), Map.of("totalRequests", 42))),
+                "meta-llama/llama-3.3-70b-instruct:free"
         );
-        when(agentService.run(any(AgentRequest.class), any())).thenReturn(agentResponse);
+        when(agentService.run(any(AgentRequest.class), anyString(), any())).thenReturn(agentResponse);
 
         mockMvc.perform(post("/api/agent/chat")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AgentRequest("How many requests today?", null))))
+                        .content(objectMapper.writeValueAsString(new AgentRequest("How many requests today?", null, null))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reply").value("There were 42 requests today."))
-                .andExpect(jsonPath("$.toolSteps[0].toolName").value("get_gateway_stats"));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM));
     }
 
     @Test
@@ -70,7 +70,7 @@ class AgentControllerTest {
         mockMvc.perform(post("/api/agent/chat")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AgentRequest("Hello", null))))
+                        .content(objectMapper.writeValueAsString(new AgentRequest("Hello", null, null))))
                 .andExpect(status().isForbidden());
     }
 

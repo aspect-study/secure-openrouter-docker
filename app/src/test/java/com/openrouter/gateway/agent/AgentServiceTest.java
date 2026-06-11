@@ -5,6 +5,7 @@ import com.openrouter.gateway.agent.adapter.OpenRouterAdapter;
 import com.openrouter.gateway.agent.model.*;
 import com.openrouter.gateway.agent.tool.GatewayTool;
 import com.openrouter.gateway.apikey.OpenRouterKeyService;
+import com.openrouter.gateway.config.ModelConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,9 @@ class AgentServiceTest {
     @Mock
     private OpenRouterKeyService keyService;
 
+    @Mock
+    private ModelConfigService modelConfigService;
+
     private GatewayTool stubTool;
     private AgentService service;
 
@@ -40,7 +44,7 @@ class AgentServiceTest {
                 return Map.of("totalRequests", 42L);
             }
         };
-        service = new AgentService(adapter, List.of(stubTool), keyService, new ObjectMapper());
+        service = new AgentService(adapter, List.of(stubTool), keyService, modelConfigService, new ObjectMapper());
     }
 
     @Test
@@ -52,7 +56,7 @@ class AgentServiceTest {
         );
         when(adapter.call(anyList(), anyList(), anyString(), anyString())).thenReturn(endTurnResponse);
 
-        AgentResponse result = service.run(new AgentRequest("How many requests today?", null), "admin@test.com");
+        AgentResponse result = service.run(new AgentRequest("How many requests today?", null, null), "admin@test.com", ignored -> {});
 
         assertThat(result.reply()).isEqualTo("The gateway processed 42 requests today.");
         assertThat(result.toolSteps()).isEmpty();
@@ -75,7 +79,7 @@ class AgentServiceTest {
                 .thenReturn(toolUseResponse)
                 .thenReturn(finalResponse);
 
-        AgentResponse result = service.run(new AgentRequest("Check stats", null), "admin@test.com");
+        AgentResponse result = service.run(new AgentRequest("Check stats", null, null), "admin@test.com", ignored -> {});
 
         assertThat(result.reply()).isEqualTo("There were 42 requests today.");
         assertThat(result.toolSteps()).hasSize(1);
@@ -94,7 +98,7 @@ class AgentServiceTest {
         );
         when(adapter.call(anyList(), anyList(), anyString(), anyString())).thenReturn(toolUseResponse);
 
-        AgentResponse result = service.run(new AgentRequest("Loop forever", null), "admin@test.com");
+        AgentResponse result = service.run(new AgentRequest("Loop forever", null, null), "admin@test.com", ignored -> {});
 
         verify(adapter, times(10)).call(anyList(), anyList(), anyString(), anyString());
         assertThat(result.toolSteps().size()).isLessThanOrEqualTo(10);
@@ -116,7 +120,7 @@ class AgentServiceTest {
                 .thenReturn(toolUseResponse)
                 .thenReturn(finalResponse);
 
-        AgentResponse result = service.run(new AgentRequest("Use unknown tool", null), "admin@test.com");
+        AgentResponse result = service.run(new AgentRequest("Use unknown tool", null, null), "admin@test.com", ignored -> {});
 
         assertThat(result.toolSteps()).hasSize(1);
         assertThat(result.toolSteps().get(0).result()).containsEntry("error", "unknown tool: nonexistent_tool");
@@ -131,8 +135,8 @@ class AgentServiceTest {
         );
         when(adapter.call(anyList(), anyList(), anyString(), anyString())).thenReturn(endTurnResponse);
 
-        service.run(new AgentRequest("Hello", null), "admin@test.com");
+        service.run(new AgentRequest("Hello", null, null), "admin@test.com", ignored -> {});
 
-        verify(adapter).call(anyList(), anyList(), eq("nvidia/nemotron-nano-9b-v2:free"), anyString());
+        verify(adapter).call(anyList(), anyList(), eq("meta-llama/llama-3.3-70b-instruct:free"), anyString());
     }
 }
