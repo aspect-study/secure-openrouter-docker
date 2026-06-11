@@ -703,6 +703,19 @@ while True:
 # Total: max of individual latencies (not sum)</code></pre>
         <p style="font-size:13px">Prompt Claude for parallel behavior: <em>"You have tools X, Y, Z. Call all of them simultaneously to resolve this quickly."</em></p>
 
+        <h4>Orchestration Patterns — Router · Pipeline · Parallel</h4>
+        <table>
+          <tr><th>Pattern</th><th>When to Use</th><th>Key Question</th></tr>
+          <tr><td><strong>ROUTER</strong></td><td>Multiple independent tasks need different specialists</td><td>"Are these tasks completely separate? Can I delegate each to a different agent?"</td></tr>
+          <tr><td><strong>PIPELINE</strong></td><td>Sequential steps where each depends on the previous</td><td>"Does step B need output from step A? Does step C need both A and B to complete first?"</td></tr>
+          <tr><td><strong>PARALLEL</strong></td><td>Multiple independent tasks that don't depend on each other</td><td>"Can all these tasks run at the exact same time without blocking each other?"</td></tr>
+        </table>
+        <ul style="font-size:13px;margin-top:8px">
+          <li><strong>ROUTER</strong> = task-level delegation ("send refunds to Returns Agent, billing to Billing Agent")</li>
+          <li><strong>PIPELINE</strong> = sequential gates ("validate → check policy → process → confirm")</li>
+          <li><strong>PARALLEL</strong> = concurrent execution ("search, read, analyze all at once")</li>
+        </ul>
+
         <h4>Multi-Agent Hub-and-Spoke</h4>
         <pre><code>          [Orchestrator]  — plans, delegates, aggregates
           /      |       \
@@ -725,6 +738,21 @@ Rules:
           <tr><td>High-value decision</td><td>Let agent guess</td><td>Escalate to human with context</td></tr>
           <tr><td>Repeated failure</td><td>Loop forever</td><td>Circuit breaker: stop after N failures</td></tr>
         </table>
+
+        <h4>Escalation — The Core Rule</h4>
+        <p style="font-size:13px;margin-bottom:8px">When the agent <strong>stops and hands off to human</strong>:</p>
+        <ul class="trap-list">
+          <li class="bad">Authority boundary exceeded — "I can approve up to €100, but this is €500"</li>
+          <li class="bad">Policy ambiguity — "The rule doesn't clearly cover this situation"</li>
+          <li class="bad">Risk signal detected — fraud indicator, legal issue, or angry customer</li>
+        </ul>
+        <p style="font-size:13px;margin:8px 0">When <strong>NOT</strong> to escalate:</p>
+        <ul class="trap-list">
+          <li class="good">Situation is within agent's clear authority</li>
+          <li class="good">Policy clearly covers it</li>
+          <li class="good">No risk signals present</li>
+        </ul>
+        <div class="callout callout-danger"><strong>Golden Rule:</strong> Programmatic constraints beat natural language instructions. If your system prompt says "try to resolve" but the agent has no authority or information to resolve, the agent must escalate anyway.</div>
 
         <h4>When NOT to Use an Agent</h4>
         <ul style="font-size:13px">
@@ -865,6 +893,13 @@ Tier 4 (Budget exceeded): Rate limit hit → explain limit, reset time, next ste
         </ul>
         <div class="callout callout-danger"><strong>Gotcha:</strong> Serial subagent chains multiply latency. Design for parallelism from the start — retrofitting is hard. If subagent A must finish before B starts, ask if B actually depends on A's result or just happens to run second.</div>
         <div class="callout callout-warn"><strong>Exam trap:</strong> Orchestrator should NOT expose subagent tools to avoid confusion and context bloat. Orchestrator delegates via messages; subagents execute and report back.</div>
+
+        <h4>Independent Review — Avoiding Cognitive Anchoring</h4>
+        <ul class="trap-list">
+          <li class="bad">Agent A generates review → Agent B sees Agent A's reasoning → B verifies it → <strong>Result: B is biased by A</strong></li>
+          <li class="good">Agent A generates review (A keeps its reasoning) → Agent B receives ONLY the raw input → B analyzes independently from scratch → compare conclusions</li>
+        </ul>
+        <div class="callout callout-warn"><strong>Why it matters:</strong> Cognitive anchoring makes B's "verification" worthless — it becomes a rubber stamp, not a check. Genuine independent review means B never sees A's output before forming its own conclusions.</div>
       </div>
     </div>
 
@@ -1238,6 +1273,18 @@ tool_result = {
         <p style="font-size:13px;margin-top:6px;color:var(--muted)">Context window, latency, cost, rate limits, data consistency, parallel agent conflicts?</p>
       </div>
     </div>
+
+    <h3>SPIDER — 6 Reliability Principles</h3>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:10px">Memory hook: <strong>S, P, I, D, E, R = SPIDER</strong>. Apply to every agent, tool, and pipeline you design.</p>
+    <table>
+      <tr><th>Letter</th><th>Stands For</th><th>Key Point</th></tr>
+      <tr><td><span class="badge b-blue">S</span></td><td><strong>Structured</strong></td><td>Use schemas, validation rules, deterministic constraints — not natural language wishes</td></tr>
+      <tr><td><span class="badge b-green">P</span></td><td><strong>Persistent</strong></td><td>Store state (decisions, history, audit trail) so you can resume and verify what happened</td></tr>
+      <tr><td><span class="badge b-yellow">I</span></td><td><strong>Idempotent</strong></td><td>Same input run twice = same result. No double charges, no duplicate records</td></tr>
+      <tr><td><span class="badge b-red">D</span></td><td><strong>Deterministic</strong></td><td>Same input → same output always. No randomness in critical paths (tool calls, decisions)</td></tr>
+      <tr><td><span class="badge b-purple">E</span></td><td><strong>Escalation</strong></td><td>When you can't resolve with certainty, escalate to human. Don't guess, don't try harder</td></tr>
+      <tr><td><span class="badge b-blue">R</span></td><td><strong>Resilient</strong></td><td>Retry with backoff, handle transient failures gracefully, degrade if needed</td></tr>
+    </table>
 
     <h3>Domain-by-Domain Exam Traps</h3>
     <table>
