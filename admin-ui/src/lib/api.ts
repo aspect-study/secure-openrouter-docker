@@ -73,6 +73,9 @@ export const adminApi = {
     api.put(`/admin/users/${id}/role`, { role }),
   updateUserStatus: (id: number, active: boolean) =>
     api.put(`/admin/users/${id}/status`, { active }),
+  getGlobalLimits: () => api.get('/admin/usage-limits'),
+  setGlobalLimit: (modelId: string, maxRequestsPerDay: number, maxTokensPerDay: number) =>
+    api.put('/admin/usage-limits', { modelId, maxRequestsPerDay, maxTokensPerDay }),
 }
 
 // ── API Key (per-user BYOK) ───────────────────────────────────────────────

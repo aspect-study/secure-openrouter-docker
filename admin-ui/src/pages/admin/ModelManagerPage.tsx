@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { adminApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { modelEmoji, modelDisplayName, modelInfo, formatDate } from '@/lib/utils'
 import type { ModelInfo } from '@/lib/utils'
@@ -30,27 +29,6 @@ const OWNER_GROUPS = [
 ]
 
 const KNOWN_PREFIXES = OWNER_GROUPS.filter(g => g.prefix).map(g => g.prefix)
-
-function ownerOf(modelId: string) {
-  const group = OWNER_GROUPS.find(g =>
-    g.prefix ? modelId.startsWith(g.prefix) : !KNOWN_PREFIXES.some(p => modelId.startsWith(p))
-  )
-  return group ?? OWNER_GROUPS[OWNER_GROUPS.length - 1]
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────
-
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex gap-3">
-      <div className="shrink-0 mt-0.5 text-muted-foreground">{icon}</div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="text-xs text-foreground mt-0.5 leading-relaxed">{value}</p>
-      </div>
-    </div>
-  )
-}
 
 function TagList({ items, color }: { items: string[]; color: 'green' | 'red' | 'blue' }) {
   const cls = {

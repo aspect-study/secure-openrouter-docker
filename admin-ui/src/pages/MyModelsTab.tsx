@@ -50,7 +50,7 @@ function groupModels(models: UserModelDto[]) {
  */
 export default function MyModelsTab() {
   const { isAdmin } = useAuth()
-  const { models, totalAdminEnabled, totalUserEnabled, loading, error, refresh } =
+  const { models, loading, error, refresh } =
     useEffectiveModels()
 
   const [filter, setFilter] = useState<FilterTab>('all')

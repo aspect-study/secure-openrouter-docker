@@ -711,9 +711,9 @@ while True:
           <tr><td><strong>PARALLEL</strong></td><td>Multiple independent tasks that don't depend on each other</td><td>"Can all these tasks run at the exact same time without blocking each other?"</td></tr>
         </table>
         <ul style="font-size:13px;margin-top:8px">
-          <li><strong>ROUTER</strong> = task-level delegation ("send refunds to Returns Agent, billing to Billing Agent")</li>
-          <li><strong>PIPELINE</strong> = sequential gates ("validate → check policy → process → confirm")</li>
-          <li><strong>PARALLEL</strong> = concurrent execution ("search, read, analyze all at once")</li>
+          <li><strong>ROUTER</strong> — Single decision → one agent. "Is this a billing issue or account issue?" → pick one.</li>
+          <li><strong>PIPELINE</strong> — Sequential dependencies. "Extract text → validate structure → classify category" → one after another.</li>
+          <li><strong>PARALLEL</strong> — Independent tasks, all needed. "Get three different data sources" → all at once.</li>
         </ul>
 
         <h4>Multi-Agent Hub-and-Spoke</h4>
