@@ -48,6 +48,15 @@ public class RateLimitService {
         return allowed;
     }
 
+    public boolean tryConsumeN(String userEmail, long n) {
+        Bucket bucket = buckets.computeIfAbsent(userEmail, this::newBucket);
+        boolean allowed = bucket.tryConsume(n);
+        if (!allowed) {
+            log.warn("Rate limit exceeded for user: {} (requested {} tokens)", userEmail, n);
+        }
+        return allowed;
+    }
+
     /**
      * Returns available tokens remaining for the user.
      */

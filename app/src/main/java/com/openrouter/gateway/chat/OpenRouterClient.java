@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openrouter.gateway.config.AppProperties;
 import com.openrouter.gateway.config.ModelConfigService;
+import com.openrouter.gateway.orchestrator.OrchestratorResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -152,6 +155,52 @@ public class OpenRouterClient {
         }
 
         log.info("SSE stream completed for model: {}", model);
+    }
+
+    public OrchestratorResult queryModel(String modelId, String modelName,
+                                          String prompt, String apiKey) {
+        long startMs = System.currentTimeMillis();
+        try {
+            String requestBody = objectMapper.writeValueAsString(Map.of(
+                    "model", modelId,
+                    "messages", List.of(Map.of("role", "user", "content", prompt)),
+                    "max_tokens", 1024
+            ));
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(proxyUrl + CHAT_COMPLETIONS_PATH))
+                    .timeout(Duration.ofSeconds(30))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofString());
+            long latencyMs = System.currentTimeMillis() - startMs;
+
+            if (response.statusCode() == 200) {
+                String content = objectMapper.readTree(response.body())
+                        .at("/choices/0/message/content").asText("");
+                log.info("queryModel: {} responded in {}ms", modelId, latencyMs);
+                return new OrchestratorResult(modelId, modelName, content, latencyMs, "SUCCESS");
+            }
+            if (response.statusCode() == 429) {
+                log.warn("queryModel: {} rate-limited (429)", modelId);
+                return new OrchestratorResult(modelId, modelName, null, latencyMs, "TIMEOUT");
+            }
+            log.warn("queryModel: {} returned HTTP {}", modelId, response.statusCode());
+            return new OrchestratorResult(modelId, modelName, null, latencyMs, "ERROR");
+
+        } catch (java.net.http.HttpTimeoutException e) {
+            long latencyMs = System.currentTimeMillis() - startMs;
+            log.warn("queryModel: {} timed out after {}ms", modelId, latencyMs);
+            return new OrchestratorResult(modelId, modelName, null, latencyMs, "TIMEOUT");
+        } catch (Exception e) {
+            long latencyMs = System.currentTimeMillis() - startMs;
+            log.error("queryModel: {} failed: {}", modelId, e.getMessage());
+            return new OrchestratorResult(modelId, modelName, null, latencyMs, "ERROR");
+        }
     }
 
     /**

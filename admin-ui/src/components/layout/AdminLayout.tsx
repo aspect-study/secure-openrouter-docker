@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { applyTheme, isDarkMode } from '@/lib/theme'
 import {
-  LayoutDashboard, MessageSquare, Cpu, Users, Bot,
+  LayoutDashboard, MessageSquare, Cpu, Users, Bot, GitMerge,
   LogOut, Zap, Moon, Sun, ExternalLink, Menu, KeyRound
 } from 'lucide-react'
 import { useState } from 'react'
@@ -17,6 +17,7 @@ const navItems = [
   { to: '/admin/models', label: 'Models', icon: Cpu },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/agent', label: 'Agent', icon: Bot },
+  { to: '/admin/orchestrator', label: 'Orchestrator', icon: GitMerge },
 ]
 
 export default function AdminLayout() {
