@@ -65,7 +65,7 @@ public class OrchestratorService {
                 return;
             }
 
-            if (!rateLimitService.tryConsumeN(userEmail, models.size())) {
+            if (!rateLimitService.tryConsume(userEmail)) {
                 sendSseEvent(emitter, "error",
                         Map.of("error", "Rate limit exceeded. Please wait and try again."));
                 return;
