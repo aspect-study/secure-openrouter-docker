@@ -3,7 +3,8 @@
 A self-hosted, secure API gateway for [OpenRouter](https://openrouter.ai) free-tier LLMs.
 JWT-authenticated, rate-limited, fully logged, with per-user BYOK keys, usage limits,
 model preferences, auto-sync of free models, an admin dashboard, an AI Playground with
-SSE streaming, and a Gateway Intelligence Agent (ReAct loop, two tools, live retry status).
+SSE streaming, a Gateway Intelligence Agent (ReAct loop, two tools, live retry status),
+and an Orchestrator Hub (parallel LLM fan-out with live SSE streaming + AI synthesis).
 
 > **Stack:** Docker · nginx · Spring Boot 3.5 (Java 25) · MySQL 8 · React + Vite + shadcn/ui  
 > **Tested on:** Windows 11 (Docker Desktop + PowerShell)
@@ -28,7 +29,7 @@ SSE streaming, and a Gateway Intelligence Agent (ReAct loop, two tools, live ret
 |---|---|
 | ![Settings](docs/screenshots/07-settings.png) | ![My Models](docs/screenshots/08-my-models.png) |
 
-| Gateway Agent | |
+| Gateway Agent | Orchestrator Hub |
 |---|---|
 | ![Gateway Agent](docs/screenshots/09-gateway-agent.png) | *(screenshot pending)* |
 
@@ -43,7 +44,8 @@ Browser (localhost:3000)
 Spring Boot — JWT auth, rate limiting (Bucket4j), chat logging,
               conversations, BYOK key management, usage tracking,
               user model preferences, free model auto-sync,
-              Gateway Intelligence Agent (ReAct, SSE, model retry)
+              Gateway Intelligence Agent (ReAct, SSE, model retry),
+              Orchestrator Hub (parallel fan-out, SSE, AI synthesis)
   │
   ▼ HTTP :8081 (localhost only)
 nginx reverse proxy — Authorization pass-through, TLS to OpenRouter
@@ -199,12 +201,6 @@ DELETE /api/user/api-key
 GET    /api/user/api-key/status
 ```
 
-### Usage (JWT)
-```
-GET /api/user/usage
-GET /api/user/usage/{modelId}
-```
-
 ### User Model Preferences (JWT — ROLE_USER or ROLE_ADMIN)
 ```
 GET /api/user/models
@@ -218,17 +214,13 @@ GET  /api/admin/stats
 GET  /api/admin/chat-logs               ?page=0&size=20&user=&model=&from=&to=
 GET  /api/admin/chat-logs/export        CSV
 GET  /api/admin/models
-PUT  /api/admin/models/{modelId}/toggle
+PUT  /api/admin/models/toggle           body: {modelId}
 POST /api/admin/sync-models             Fetch OpenRouter free models list, insert new ones as disabled
 GET  /api/admin/users
 PUT  /api/admin/users/{id}/role
 PUT  /api/admin/users/{id}/status
-GET  /api/admin/usage/limits
-PUT  /api/admin/usage/limits/{modelId}
-GET  /api/admin/users/{id}/usage/limits
-PUT  /api/admin/users/{id}/usage/limits/{modelId}
-DELETE /api/admin/users/{id}/usage/limits/{modelId}
-GET  /api/admin/users/{id}/usage
+GET  /api/admin/usage-limits
+PUT  /api/admin/usage-limits            body: {modelId, maxRequestsPerDay, maxTokensPerDay}
 ```
 
 ### Agent (JWT — ROLE_ADMIN)
@@ -249,6 +241,28 @@ event: error    data: {"error":"...","status":409|400|503|500}
 Default model: `meta-llama/llama-3.3-70b-instruct:free`.  
 Requires BYOK API key configured in Settings (409 if missing).  
 Consumer must use `fetch` + `ReadableStream` — `EventSource` does not support POST.
+
+### Orchestrator Hub (JWT — ROLE_USER or ROLE_ADMIN)
+```
+POST /api/orchestrate/stream      SSE stream — fan-out prompt to all enabled models in parallel
+POST /api/orchestrate/synthesize  Blocking — synthesize collected responses into one answer
+```
+
+`/stream` request body: `{"prompt":"..."}`
+
+SSE event protocol:
+```
+event: model_response   data: {"modelId":"...","name":"...","content":"...","latencyMs":1234,"status":"SUCCESS"}
+event: all_done         data: {"successCount":3,"totalModels":5,"totalMs":4567}
+event: error            data: {"error":"..."}
+```
+
+`/synthesize` request body: `{"prompt":"...","responses":[{"modelId":"...","name":"...","content":"...","latencyMs":0,"status":"SUCCESS"}]}`
+
+`/synthesize` response: `{"content":"...","modelId":"...","modelName":"..."}`
+
+Fan-out uses all models the user has enabled (My Models). Requires BYOK API key (409 if missing).  
+Consumer must use `fetch` + `ReadableStream` for `/stream` — `EventSource` does not support POST.
 
 ### System
 ```
@@ -320,6 +334,8 @@ secure-openrouter-docker/
 │   │   ├── admin/                          # AdminController, AgentController (ROLE_ADMIN)
 │   │   ├── agent/                          # ReAct agent: AgentService, OpenRouterAdapter,
 │   │   │                                   # model/, tool/ (GetModelStatus, GetGatewayStats)
+│   │   ├── orchestrator/                   # Orchestrator Hub: OrchestratorController,
+│   │   │                                   # OrchestratorService, OpenRouterClient fan-out
 │   │   ├── auth/                           # JWT, User entity, register/login
 │   │   ├── chat/                           # ChatController, ChatService, OpenRouterClient
 │   │   ├── config/                         # SecurityConfig, HttpClientConfig, AppProperties,
@@ -338,7 +354,8 @@ secure-openrouter-docker/
 │       ├── PlaygroundPage.tsx
 │       ├── SettingsPage.tsx                # My Models, BYOK key, Change Password
 │       └── admin/                          # Dashboard, ChatLogs, ModelManager,
-│                                           # UserManager, UsageLimits, AgentPage
+│                                           # UserManager, UsageLimits, AgentPage,
+│                                           # OrchestratorPage
 ├── memory/
 │   ├── adrs/                               # Architectural Decision Records (ADR-001–017)
 │   ├── prds/                               # Product Requirements (PRD-001–005)
@@ -363,7 +380,8 @@ secure-openrouter-docker/
 - [x] Phase 4.8 — Model lifecycle: 404 auto-disable, upstream error UX (429/404)
 - [x] Phase 4.9 — PRD-004: Auto-sync new free models from OpenRouter (startup + on-demand)
 - [x] Phase 5.0 — PRD-005: Gateway Intelligence Agent (ReAct loop, 2 tools, SSE retry stream, conversation context)
-- [ ] Phase 5.1 — GitHub Actions CI/CD pipeline
+- [x] Phase 5.1 — Orchestrator Hub (parallel LLM fan-out, live SSE streaming, AI synthesis)
+- [ ] Phase 5.2 — GitHub Actions CI/CD pipeline
 
 ---
 
