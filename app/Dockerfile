@@ -7,7 +7,10 @@
 # ============================================================
 
 # ── Stage 1: Build ───────────────────────────────────────────
-FROM eclipse-temurin:21-jdk-alpine AS builder
+# glibc-based (not Alpine/musl) — Foojay's JDK 25 auto-download unpacks
+# incorrectly on musl, failing with "Unpacked JDK archive does not contain
+# a Java home". The runtime stage below stays on Alpine for image size.
+FROM eclipse-temurin:21-jdk AS builder
 # Gradle 8.14 runtime requires JDK 21. Toolchain auto-provisions JDK 25 for compilation via Foojay resolver.
 
 WORKDIR /build
