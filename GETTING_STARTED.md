@@ -95,18 +95,18 @@ step) pulls it from Docker Hub automatically the first time you run it — that'
 database file anywhere in this repo that you need to find or download.
 
 The tables inside that empty server are then created automatically. On first startup,
-Spring Boot's [Flyway](https://flywaydb.org/) integration automatically creates every table (users, chat logs, conversations, model
-config, usage limits, preferences — 8 tables across `V1`–`V7`) and seeds the default
-admin user and the initial free-model list. This happens every time you start the app
-against a fresh database.
+Spring Boot's [Flyway](https://flywaydb.org/) integration creates all 8 tables (users,
+chat logs, conversations, model config, usage limits, preferences) and seeds the
+default admin user and the initial free-model list. This is fully automatic and
+happens every time you start the app against a fresh database — **you never need to
+open, edit, or run anything related to this yourself**, it's an internal implementation
+detail of how the app boots.
 
-**Want to see the schema without running the app?** Read
+**Curious what the schema actually looks like?** Read
 [`docs/openrouter_gateway.sql`](docs/openrouter_gateway.sql) — a real structure-only
-dump of the database (all `CREATE TABLE` statements, no data) for reference only
-(don't run it — see the warning inside). The canonical source is always
-[`app/src/main/resources/db/migration/`](app/src/main/resources/db/migration/)
-(`V1`–`V7`), and [docs/schema.md](docs/schema.md) has a human-readable table-by-table
-description plus the key gotchas (e.g. `BIT(1)` vs `TINYINT`).
+dump of the database (all `CREATE TABLE` statements, no data), or
+[docs/schema.md](docs/schema.md) for a human-readable table-by-table description. Both
+are optional reading, not setup steps.
 
 > ⚠️ **Ignore `db/seed.sql`.** It's a leftover from before Flyway was introduced, is
 > explicitly marked deprecated in the file header, and is missing several tables added
