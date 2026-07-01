@@ -85,11 +85,17 @@ openssl rand -hex 32
 Paste each generated value into the matching line in `.env`. **Never commit this file**
 — it's already in `.gitignore`.
 
-### 3. About the database schema — you don't need to set anything up
+### 3. About the database — you don't need to install or download anything
 
-The MySQL container starts **completely empty**. You do not need to run any `.sql`
-file, and there is nothing to import. On first startup, Spring Boot's [Flyway](https://flywaydb.org/)
-integration automatically creates every table (users, chat logs, conversations, model
+You do not need to install MySQL, download a database file, or import a dump. The
+`openrouter-mysql` service in `docker-compose.yml` points at the official
+[`mysql:8.0`](https://hub.docker.com/_/mysql) image, and `docker compose up -d` (next
+step) pulls it from Docker Hub automatically the first time you run it — that's where
+"the db" comes from. It starts as a fresh, empty MySQL server; there is no seed
+database file anywhere in this repo that you need to find or download.
+
+The tables inside that empty server are then created automatically. On first startup,
+Spring Boot's [Flyway](https://flywaydb.org/) integration automatically creates every table (users, chat logs, conversations, model
 config, usage limits, preferences — 8 tables across `V1`–`V7`) and seeds the default
 admin user and the initial free-model list. This happens every time you start the app
 against a fresh database.
