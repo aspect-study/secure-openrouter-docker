@@ -9,9 +9,29 @@ and an Orchestrator Hub (parallel LLM fan-out with live SSE streaming + AI synth
 > **Stack:** Docker · nginx · Spring Boot 3.5 (Java 25) · MySQL 8 · React + Vite + shadcn/ui  
 > **Tested on:** Windows 11 (Docker Desktop + PowerShell)
 
-**New here?** Follow **[GETTING_STARTED.md](GETTING_STARTED.md)** for a full step-by-step
-walkthrough (env setup, secret generation, troubleshooting). The sections below are a
-reference once you're up and running.
+## What you need to run this locally
+
+**Required:**
+
+1. **Docker Desktop** (running) — this alone gets MySQL, nginx proxy, Spring Boot backend,
+   and the admin UI all up via `docker compose up -d`. No manual MySQL install, no schema
+   file to run — Flyway builds the DB automatically on first boot.
+2. **Git** — to clone the repo.
+3. **A free [OpenRouter](https://openrouter.ai) account** — to get an API key from
+   [openrouter.ai/keys](https://openrouter.ai/keys). This goes in `.env`.
+4. **A filled-in `.env` file** — copy `.env.example` → `.env`, then generate two secrets
+   yourself (`JWT_SECRET` and `ENCRYPTION_MASTER_KEY` — commands are in the guide) plus
+   your OpenRouter key. Everything else in `.env.example` has safe defaults.
+
+That's it — `docker compose up -d`, wait for `(healthy)`, open `localhost:3000`, log in
+with the seeded admin account, done.
+
+**Only if you want to edit the code** (not required just to run it): JDK 21 + JDK 25, and
+Node 22+/npm 10 — for running the backend/frontend natively instead of in Docker.
+
+**New here?** Follow **[GETTING_STARTED.md](GETTING_STARTED.md)** for the full
+step-by-step walkthrough (env setup, secret generation, troubleshooting). The sections
+below are a reference once you're up and running.
 
 ---
 
