@@ -24,7 +24,7 @@ import java.util.List;
  * Design decisions:
  * - Stateless session (STATELESS) — we rely entirely on JWT, no HTTP sessions.
  * - CSRF disabled — appropriate for a stateless REST API.
- * - Public endpoints: /api/auth/** (register, login) and /actuator/health.
+ * - Public endpoints: /api/auth/** (register, login) and /actuator/health, /actuator/prometheus, /actuator/metrics.
  * - All other endpoints require a valid JWT.
  */
 @Configuration
@@ -56,7 +56,7 @@ public class SecurityConfig {
                         // carry no SecurityContext -- they must be permitted unconditionally.
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/prometheus", "/actuator/metrics", "/actuator/metrics/**").permitAll()
                         // User model preferences — ROLE_USER and ROLE_ADMIN (explicit, matches PRD-003)
                         .requestMatchers("/api/user/models/**").hasAnyRole("USER", "ADMIN")
                         // Gateway Intelligence Agent — ROLE_ADMIN only (PRD-005)
