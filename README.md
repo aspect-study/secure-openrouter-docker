@@ -9,6 +9,10 @@ and an Orchestrator Hub (parallel LLM fan-out with live SSE streaming + AI synth
 > **Stack:** Docker · nginx · Spring Boot 3.5 (Java 25) · MySQL 8 · React + Vite + shadcn/ui  
 > **Tested on:** Windows 11 (Docker Desktop + PowerShell)
 
+**New here?** Follow **[GETTING_STARTED.md](GETTING_STARTED.md)** for a full step-by-step
+walkthrough (env setup, secret generation, troubleshooting). The sections below are a
+reference once you're up and running.
+
 ---
 
 ## Screenshots
