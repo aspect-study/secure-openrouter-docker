@@ -2,6 +2,9 @@
 
 Schema owned by Flyway (`ddl-auto=validate`). Never change back to `update` or `create`.
 
+For the complete `CREATE TABLE` DDL in one file (a real structure dump, reference only
+— do not run), see [openrouter_gateway.sql](openrouter_gateway.sql).
+
 ## Tables
 
 | Table | Description |

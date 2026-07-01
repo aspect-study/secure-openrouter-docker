@@ -100,13 +100,19 @@ config, usage limits, preferences — 8 tables across `V1`–`V7`) and seeds the
 admin user and the initial free-model list. This happens every time you start the app
 against a fresh database.
 
+**Want to see the schema without running the app?** Read
+[`docs/openrouter_gateway.sql`](docs/openrouter_gateway.sql) — a real structure-only
+dump of the database (all `CREATE TABLE` statements, no data) for reference only
+(don't run it — see the warning inside). The canonical source is always
+[`app/src/main/resources/db/migration/`](app/src/main/resources/db/migration/)
+(`V1`–`V7`), and [docs/schema.md](docs/schema.md) has a human-readable table-by-table
+description plus the key gotchas (e.g. `BIT(1)` vs `TINYINT`).
+
 > ⚠️ **Ignore `db/seed.sql`.** It's a leftover from before Flyway was introduced, is
 > explicitly marked deprecated in the file header, and is missing several tables added
 > since (`user_model_preferences`, `model_usage_limits`, `user_model_usage`). It is not
 > mounted into the MySQL container and running it manually will leave you with an
-> incomplete/inconsistent schema. The real, complete, always-up-to-date schema is
-> [`app/src/main/resources/db/migration/`](app/src/main/resources/db/migration/) — see
-> [docs/schema.md](docs/schema.md) for a human-readable table-by-table breakdown.
+> incomplete/inconsistent schema.
 
 ### 4. Start everything
 
@@ -280,5 +286,6 @@ docker compose down -v
 - [README.md](README.md) — architecture diagram, full API reference, security notes
 - [docs/environment.md](docs/environment.md) — full explanation of every env var
 - [docs/schema.md](docs/schema.md) — database tables and Flyway migration history
+- [docs/openrouter_gateway.sql](docs/openrouter_gateway.sql) — complete schema DDL in one file
 - [docs/constraints.md](docs/constraints.md) — gotchas and troubleshooting by subsystem
 - [memory/adrs/](memory/adrs/) — why certain architectural decisions were made
