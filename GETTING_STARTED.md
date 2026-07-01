@@ -85,7 +85,24 @@ openssl rand -hex 32
 Paste each generated value into the matching line in `.env`. **Never commit this file**
 — it's already in `.gitignore`.
 
-### 3. Start everything
+### 3. About the database schema — you don't need to set anything up
+
+The MySQL container starts **completely empty**. You do not need to run any `.sql`
+file, and there is nothing to import. On first startup, Spring Boot's [Flyway](https://flywaydb.org/)
+integration automatically creates every table (users, chat logs, conversations, model
+config, usage limits, preferences — 8 tables across `V1`–`V7`) and seeds the default
+admin user and the initial free-model list. This happens every time you start the app
+against a fresh database.
+
+> ⚠️ **Ignore `db/seed.sql`.** It's a leftover from before Flyway was introduced, is
+> explicitly marked deprecated in the file header, and is missing several tables added
+> since (`user_model_preferences`, `model_usage_limits`, `user_model_usage`). It is not
+> mounted into the MySQL container and running it manually will leave you with an
+> incomplete/inconsistent schema. The real, complete, always-up-to-date schema is
+> [`app/src/main/resources/db/migration/`](app/src/main/resources/db/migration/) — see
+> [docs/schema.md](docs/schema.md) for a human-readable table-by-table breakdown.
+
+### 4. Start everything
 
 ```bash
 docker compose up -d
@@ -101,7 +118,7 @@ docker compose ps
 Wait until all services show `(healthy)`. MySQL is the slowest to become healthy
 (~30 seconds) since Spring Boot waits for it before starting.
 
-### 4. Open the app
+### 5. Open the app
 
 Go to **http://localhost:3000** and log in with the seeded admin account:
 
@@ -113,7 +130,7 @@ Password: Admin@2026!
 **Change this password immediately** (Settings → Change Password) — it's a well-known
 default seeded by the DB migration, not a secret.
 
-### 5. Try it out
+### 6. Try it out
 
 - Go to **Model Manager** (admin) and enable a couple of free models — new installs sync
   the current OpenRouter free-tier list on first startup but leave everything disabled
