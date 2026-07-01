@@ -1,0 +1,16 @@
+# ============================================================
+# Grafana dashboard provisioning — auto-loads dashboards on first boot
+# ============================================================
+
+apiVersion: 1
+
+providers:
+  - name: AspectOR
+    orgId: 1
+    folder: AspectOR
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
